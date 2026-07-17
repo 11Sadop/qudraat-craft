@@ -30,6 +30,9 @@
                 <span>قُدرات كرافت</span>
             </div>
             <div class="header-controls">
+                <button class="btn-icon" id="sync-btn" title="المزامنة والحساب بين الأجهزة">
+                    <i class="fa-solid fa-cloud"></i>
+                </button>
                 <button class="btn-icon" id="theme-toggle" title="تغيير المظهر">
                     <i class="fa-solid fa-moon"></i>
                 </button>
@@ -141,6 +144,22 @@
                         <div style="flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px;">
                             <span style="font-size: 14px; font-weight: 700; color: var(--text-secondary); white-space: nowrap;">انتقال سريع:</span>
                             <select id="book-jump-selector" style="flex: 1; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); font-size: 15px; font-weight: 700; outline: none; cursor: pointer; text-align: right;"></select>
+                        </div>
+                    </div>
+
+                    <!-- Bookmark Bar Banner -->
+                    <div id="book-bookmark-bar" style="display: flex; justify-content: space-between; align-items: center; background: rgba(139, 92, 246, 0.08); border: 1px dashed var(--accent-color); padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 700; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 8px; color: var(--accent-color);">
+                            <i class="fa-solid fa-bookmark" style="font-size: 16px;"></i>
+                            <span id="bookmark-status-text">علامة التوقف للمذاكرة: لم يتم حفظ علامة بعد</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="bookmark-jump-btn" class="btn-primary" style="padding: 6px 14px; font-size: 13px; border-radius: 8px; display: none;">
+                                <i class="fa-solid fa-arrow-turn-down"></i> الذهاب لمكان التوقف
+                            </button>
+                            <button id="bookmark-remove-btn" style="background: rgba(239,68,68,0.1); color: var(--error-color); border: 1px solid rgba(239,68,68,0.2); padding: 6px 10px; font-size: 12px; border-radius: 8px; cursor: pointer; display: none;" title="حذف العلامة">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -331,6 +350,78 @@
         </div>
     </div>
     
+    <!-- Cloud Sync & Account Modal -->
+    <div class="modal-overlay" id="account-modal">
+        <div class="modal-card" style="max-width: 520px; text-align: right;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <h3 style="font-size: 20px; font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-cloud-arrow-up" style="color: var(--accent-color);"></i> المزامنة وحساب المستخدم
+                </h3>
+                <button class="btn-icon" id="account-modal-close" style="width: 32px; height: 32px; background: transparent; border: none; color: var(--text-secondary); cursor: pointer;">
+                    <i class="fa-solid fa-xmark" style="font-size: 18px;"></i>
+                </button>
+            </div>
+            
+            <p style="font-size: 14px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px;">
+                قم بمزامنة درجاتك، والاختبارات المحلولة، وبنك الأخطاء، وعلامات المذاكرة بين الكمبيوتر والجوال بسهولة عبر السحابة!
+            </p>
+            
+            <!-- Sync Status Card -->
+            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 14px; padding: 16px; margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-weight: 700; font-size: 14px; color: var(--text-secondary);">حالة المزامنة:</span>
+                    <span id="sync-status-badge" style="padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; background: rgba(255,255,255,0.05); color: var(--text-secondary);">غير متصل بالسحابة</span>
+                </div>
+                <div id="sync-code-container" style="display: none; justify-content: space-between; align-items: center; background: var(--bg-primary); padding: 10px 14px; border-radius: 10px; border: 1px dashed var(--accent-color);">
+                    <span style="font-size: 13px; font-weight: 700; color: var(--text-primary);">كود المزامنة الخاص بك:</span>
+                    <code id="sync-code-display" style="font-family: monospace; font-size: 14px; font-weight: 800; color: var(--accent-color); letter-spacing: 1px;">-</code>
+                </div>
+            </div>
+            
+            <!-- Actions Section -->
+            <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px;">
+                <!-- Section 1: Create or Sync -->
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-create-sync" class="btn-primary" style="flex: 1; min-width: 180px; padding: 12px; justify-content: center; font-size: 14px;">
+                        <i class="fa-solid fa-cloud-plus"></i> إنشاء كود مزامنة جديد ☁️
+                    </button>
+                    <button id="btn-manual-sync" class="btn-secondary" style="flex: 1; min-width: 180px; padding: 12px; justify-content: center; font-size: 14px;">
+                        <i class="fa-solid fa-rotate"></i> مزامنة الآن 🔄
+                    </button>
+                </div>
+                
+                <!-- Section 2: Link Device with Existing Code -->
+                <div style="background: var(--bg-tertiary); padding: 14px; border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+                    <label style="font-weight: 700; font-size: 13px; color: var(--text-primary);">ربط هذا الجهاز بكود مزامنة سابق (من جهاز آخر):</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="sync-input-code" placeholder="أدخل كود المزامنة هنا..." style="flex: 1; padding: 10px 14px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 14px; outline: none;">
+                        <button id="btn-link-sync" class="btn-primary" style="padding: 10px 16px; font-size: 13px; border-radius: 8px; white-space: nowrap;">
+                            <i class="fa-solid fa-link"></i> ربط الجهاز
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Section 3: File Backup (Export / Import) -->
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button id="btn-export-json" class="btn-secondary" style="flex: 1; padding: 10px; font-size: 13px; justify-content: center;">
+                        <i class="fa-solid fa-download"></i> تصدير ملف (JSON) 📤
+                    </button>
+                    <button id="btn-import-json" class="btn-secondary" style="flex: 1; padding: 10px; font-size: 13px; justify-content: center;">
+                        <i class="fa-solid fa-upload"></i> استيراد ملف (JSON) 📥
+                    </button>
+                    <input type="file" id="import-file-input" accept=".json" style="display: none;">
+                </div>
+            </div>
+            
+            <div style="display: flex; justify-content: flex-end;">
+                <button class="btn-secondary" id="account-modal-done" style="padding: 10px 24px; font-size: 14px;">إغلاق</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Toast Notifications Container -->
+    <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 10000; display: flex; flex-direction: column; gap: 10px; pointer-events: none;"></div>
+
     <script src="app.js?v=2"></script>
 </body>
 </html>

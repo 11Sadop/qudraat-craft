@@ -1026,3 +1026,60 @@ header {
     font-weight: 700;
 }
 
+/* Toast Notifications */
+.toast-msg {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border: 1px solid var(--accent-color);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: auto;
+    animation: toastIn 0.3s ease forwards;
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Bookmark Buttons & Badges */
+.pdf-bookmark-btn {
+    background: rgba(139, 92, 246, 0.1);
+    color: var(--accent-color);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.pdf-bookmark-btn:hover {
+    background: var(--accent-color);
+    color: #ffffff;
+}
+
+.pdf-bookmark-active-badge {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #ffffff;
+    padding: 4px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+}
+
+

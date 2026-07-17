@@ -87,12 +87,393 @@ function loadProgress() {
     userProgress.incorrectQuestions = userProgress.incorrectQuestions || [];
     userProgress.totalCorrect = userProgress.totalCorrect || 0;
     userProgress.totalIncorrect = userProgress.totalIncorrect || 0;
+    userProgress.studyBookmark = userProgress.studyBookmark || null;
+    userProgress.syncCode = userProgress.syncCode || null;
     
     updateStatsDashboard();
+    updateBookmarkUI();
+    updateSyncUI();
+    
+    if (userProgress.syncCode) {
+        fetchProgressFromCloud(userProgress.syncCode, true);
+    }
 }
 
-function saveProgress() {
+function saveProgress(syncCloud = true) {
     localStorage.setItem('qudurat_progress', JSON.stringify(userProgress));
+    if (syncCloud && userProgress.syncCode) {
+        syncProgressToCloud();
+    }
+}
+
+// Toast Notifications System
+function showToast(message, icon = 'fa-circle-check', duration = 3500) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    
+    const toast = document.createElement('div');
+    toast.className = 'toast-msg';
+    toast.innerHTML = `
+        <i class="fa-solid ${icon}" style="color: var(--accent-color); font-size: 16px;"></i>
+        <span>${message}</span>
+    `;
+    container.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(10px)';
+        toast.style.transition = 'all 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
+// Book Study Bookmark Functions
+function saveBookBookmark(key) {
+    const model = quizzesData[key];
+    if (!model) return;
+    
+    const cleanKey = key.replace(/[^a-zA-Z0-9]/g, '_');
+    const modelTitle = model.title || key;
+    
+    const now = new Date();
+    const days = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+    const dayName = days[now.getDay()];
+    const dateStr = now.toLocaleDateString('ar-EG');
+    const timeStr = now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    const formattedDate = `${dayName} ${dateStr} - ${timeStr}`;
+    const numPart = key.split(':')[0].trim();
+    
+    userProgress.studyBookmark = {
+        key: key,
+        cleanKey: cleanKey,
+        title: modelTitle,
+        numPart: numPart,
+        savedAt: formattedDate,
+        timestamp: Date.now()
+    };
+    
+    saveProgress();
+    updateBookmarkUI();
+    
+    // Re-render book container so the button changes to gold badge
+    const container = document.getElementById('pdf-book-container');
+    const currentSearch = document.getElementById('book-search-bar') ? document.getElementById('book-search-bar').value : '';
+    if (container) {
+        renderPDFBook(quizzesData, currentSearch);
+    }
+    
+    showToast(`تم حفظ علامة التوقف عند (${numPart}: ${modelTitle}) 🔖`);
+}
+
+function removeBookBookmark() {
+    userProgress.studyBookmark = null;
+    saveProgress();
+    updateBookmarkUI();
+    
+    const container = document.getElementById('pdf-book-container');
+    const currentSearch = document.getElementById('book-search-bar') ? document.getElementById('book-search-bar').value : '';
+    if (container) {
+        renderPDFBook(quizzesData, currentSearch);
+    }
+    
+    showToast('تم حذف علامة التوقف 🗑️');
+}
+
+function goToBookBookmark() {
+    if (!userProgress.studyBookmark) {
+        alert('لم تقم بحفظ أي علامة توقف بعد.');
+        return;
+    }
+    const { cleanKey, numPart, title } = userProgress.studyBookmark;
+    const targetId = `pdf-page-${cleanKey}`;
+    let element = document.getElementById(targetId);
+    
+    if (!element) {
+        showToast('جاري تحميل وتجهيز النموذج لعلامة التوقف...', 'fa-spinner fa-spin');
+        forceRenderUpToKey(cleanKey, () => {
+            const el = document.getElementById(targetId);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                el.style.outline = '4px solid #f59e0b';
+                setTimeout(() => { el.style.outline = 'none'; }, 2500);
+            }
+        });
+    } else {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        element.style.outline = '4px solid #f59e0b';
+        setTimeout(() => { element.style.outline = 'none'; }, 2500);
+    }
+}
+
+function updateBookmarkUI() {
+    const statusText = document.getElementById('bookmark-status-text');
+    const jumpBtn = document.getElementById('bookmark-jump-btn');
+    const removeBtn = document.getElementById('bookmark-remove-btn');
+    
+    if (userProgress.studyBookmark) {
+        const bm = userProgress.studyBookmark;
+        if (statusText) {
+            statusText.innerHTML = `<strong>علامة التوقف:</strong> واصل عند <u>${bm.numPart}: ${bm.title}</u> (${bm.savedAt})`;
+        }
+        if (jumpBtn) jumpBtn.style.display = 'inline-flex';
+        if (removeBtn) removeBtn.style.display = 'inline-flex';
+    } else {
+        if (statusText) {
+            statusText.innerText = 'علامة التوقف للمذاكرة: لم يتم حفظ علامة بعد';
+        }
+        if (jumpBtn) jumpBtn.style.display = 'none';
+        if (removeBtn) removeBtn.style.display = 'none';
+    }
+}
+
+// Cloud Sync Functions via Vercel Serverless API + jsonblob Fallback
+async function createCloudSyncAccount() {
+    try {
+        showToast('جاري إنشاء كود المزامنة السحابية...', 'fa-spinner fa-spin');
+        const reqData = {
+            progress: userProgress,
+            created_at: new Date().toISOString()
+        };
+        
+        let syncCode = null;
+        try {
+            const res = await fetch('/api/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(reqData)
+            });
+            if (res.ok) {
+                const json = await res.json();
+                if (json && json.syncCode) syncCode = json.syncCode;
+            }
+        } catch (e) {
+            console.warn("API route sync failed, trying fallback...", e);
+        }
+
+        if (!syncCode) {
+            const resDirect = await fetch('https://jsonblob.com/api/jsonBlob', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(reqData)
+            });
+            if (resDirect.ok) {
+                syncCode = resDirect.headers.get('x-jsonblob-id') || 
+                           (resDirect.headers.get('location') || '').split('/').pop() || 
+                           (resDirect.headers.get('Location') || '').split('/').pop();
+            }
+        }
+        
+        if (!syncCode) throw new Error("تعذر استخراج كود المزامنة من السحابة");
+        
+        userProgress.syncCode = syncCode;
+        userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
+        saveProgress(false);
+        
+        updateSyncUI();
+        showToast('تم إنشاء وتفعيل كود المزامنة السحابية بنجاح! ☁️🎉');
+    } catch (err) {
+        console.error("Cloud Sync creation failed:", err);
+        alert(`فشل إنشاء كود المزامنة: ${err.message || err}`);
+    }
+}
+
+async function linkCloudSyncAccount(code) {
+    if (!code || !code.trim()) {
+        alert("يرجى إدخال كود المزامنة أولاً.");
+        return;
+    }
+    const cleanCode = code.trim();
+    try {
+        showToast('جاري الاتصال بالسحابة وجلب بيانات الجهاز الآخر...', 'fa-spinner fa-spin');
+        
+        let cloudData = null;
+        try {
+            const res = await fetch(`/api/sync?code=${cleanCode}`);
+            if (res.ok) {
+                const json = await res.json();
+                if (json && json.data) cloudData = json.data;
+            }
+        } catch (e) {}
+
+        if (!cloudData) {
+            const resDirect = await fetch(`https://jsonblob.com/api/jsonBlob/${cleanCode}`);
+            if (resDirect.ok) {
+                cloudData = await resDirect.json();
+            }
+        }
+        
+        if (!cloudData) {
+            alert("كود المزامنة غير صحيح أو منتهي الصلاحية.");
+            return;
+        }
+        
+        const cloudProgress = cloudData.progress || cloudData;
+        if (cloudProgress) {
+            userProgress.completed = { ...userProgress.completed, ...cloudProgress.completed };
+            
+            const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
+            (cloudProgress.incorrectQuestions || []).forEach(q => {
+                if (!existingMistakeTitles.has(q.title)) {
+                    userProgress.incorrectQuestions.push(q);
+                }
+            });
+            
+            if (cloudProgress.studyBookmark) {
+                userProgress.studyBookmark = cloudProgress.studyBookmark;
+            }
+            
+            userProgress.syncCode = cleanCode;
+            userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
+            saveProgress(false);
+            
+            updateStatsDashboard();
+            updateBookmarkUI();
+            updateSyncUI();
+            renderModelsList(quizzesData);
+            
+            showToast('تم ربط الجهاز ومزامنة كامل البيانات بنجاح! 📱💻✨');
+            const accountModal = document.getElementById('account-modal');
+            if (accountModal) accountModal.classList.remove('active');
+        }
+    } catch (err) {
+        console.error("Cloud link failed:", err);
+        alert("تعذر الاتصال بالسحابة لربط الجهاز. حاول لاحقاً.");
+    }
+}
+
+async function syncProgressToCloud() {
+    if (!userProgress.syncCode) return;
+    try {
+        const payload = { syncCode: userProgress.syncCode, progress: userProgress };
+        let synced = false;
+        try {
+            const res = await fetch('/api/sync', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (res.ok) synced = true;
+        } catch (e) {}
+
+        if (!synced) {
+            await fetch(`https://jsonblob.com/api/jsonBlob/${userProgress.syncCode}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify({ progress: userProgress, updated_at: new Date().toISOString() })
+            });
+        }
+        userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
+        updateSyncUI();
+    } catch (e) {
+        console.warn("Auto sync failed:", e);
+    }
+}
+
+async function fetchProgressFromCloud(code, silent = false) {
+    if (!code) return;
+    try {
+        const res = await fetch(`https://jsonblob.com/api/jsonBlob/${code}`, {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data && data.progress) {
+                const cloudProgress = data.progress;
+                userProgress.completed = { ...userProgress.completed, ...cloudProgress.completed };
+                
+                const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
+                (cloudProgress.incorrectQuestions || []).forEach(q => {
+                    if (!existingMistakeTitles.has(q.title)) {
+                        userProgress.incorrectQuestions.push(q);
+                    }
+                });
+                
+                if (cloudProgress.studyBookmark) {
+                    userProgress.studyBookmark = cloudProgress.studyBookmark;
+                }
+                
+                saveProgress(false);
+                updateStatsDashboard();
+                updateBookmarkUI();
+                updateSyncUI();
+                renderModelsList(quizzesData);
+                if (!silent) showToast('تم تحديث البيانات من السحابة بنجاح! 🔄');
+            }
+        }
+    } catch (e) {
+        console.warn("Silent cloud fetch failed:", e);
+    }
+}
+
+function updateSyncUI() {
+    const badge = document.getElementById('sync-status-badge');
+    const container = document.getElementById('sync-code-container');
+    const codeDisplay = document.getElementById('sync-code-display');
+    const syncBtn = document.getElementById('sync-btn');
+    
+    if (userProgress.syncCode) {
+        if (badge) {
+            badge.innerText = 'متصل ومزامن سحابياً 🟢';
+            badge.style.background = 'rgba(16, 185, 129, 0.15)';
+            badge.style.color = 'var(--success-color)';
+        }
+        if (container) container.style.display = 'flex';
+        if (codeDisplay) codeDisplay.innerText = userProgress.syncCode;
+        if (syncBtn) {
+            syncBtn.style.color = 'var(--success-color)';
+            syncBtn.title = `مزامنة سحابية نشطة (الكود: ${userProgress.syncCode})`;
+        }
+    } else {
+        if (badge) {
+            badge.innerText = 'غير متصل بالسحابة (بيانات محلية)';
+            badge.style.background = 'rgba(255, 255, 255, 0.05)';
+            badge.style.color = 'var(--text-secondary)';
+        }
+        if (container) container.style.display = 'none';
+        if (syncBtn) {
+            syncBtn.style.color = 'var(--text-secondary)';
+            syncBtn.title = 'المزامنة والحساب بين الأجهزة';
+        }
+    }
+}
+
+function exportProgressToFile() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(userProgress, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `qudurat_backup_${new Date().toISOString().slice(0, 10)}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast('تم تصدير ملف النسخة الاحتياطية بنجاح 📤');
+}
+
+function importProgressFromFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedData = JSON.parse(e.target.result);
+            if (importedData && typeof importedData === 'object') {
+                userProgress.completed = { ...userProgress.completed, ...(importedData.completed || {}) };
+                userProgress.incorrectQuestions = importedData.incorrectQuestions || userProgress.incorrectQuestions;
+                if (importedData.studyBookmark) userProgress.studyBookmark = importedData.studyBookmark;
+                if (importedData.syncCode) userProgress.syncCode = importedData.syncCode;
+                
+                saveProgress();
+                updateStatsDashboard();
+                updateBookmarkUI();
+                updateSyncUI();
+                renderModelsList(quizzesData);
+                showToast('تم استيراد النسخة الاحتياطية وتحديث التقدم بنجاح! 📥🎉');
+            }
+        } catch (err) {
+            alert('ملف النسخة الاحتياطية غير صالح.');
+        }
+    };
+    reader.readAsText(file);
 }
 
 function updateStatsDashboard() {
@@ -512,10 +893,16 @@ function loadMorePDFPagesBatch(batchSize = 10) {
             }
         }
         
+        const isBookmarked = userProgress.studyBookmark && userProgress.studyBookmark.cleanKey === cleanKey;
+        const bookmarkBtnHTML = isBookmarked ? 
+            `<span class="pdf-bookmark-active-badge"><i class="fa-solid fa-bookmark"></i> مكان التوقف الحالي (${userProgress.studyBookmark.savedAt})</span>` : 
+            `<button class="pdf-bookmark-btn" onclick="saveBookBookmark('${key}')"><i class="fa-regular fa-bookmark"></i> حفظ كعلامة توقف 🔖</button>`;
+
         const pageNum = globalIdx + 1;
         pageEl.innerHTML = `
             <div class="pdf-page-header">
                 <span>سبحان الله وبحمده سبحان الله العظيم</span>
+                ${bookmarkBtnHTML}
                 <span>النموذج ${pageNum}</span>
             </div>
             <div class="pdf-page-title">${modelTitle}</div>
@@ -633,6 +1020,75 @@ function updateJumpSelectorOnScroll() {
 
 // Event Handlers Setup
 function setupEventHandlers() {
+    // Account & Cloud Sync Modal handlers
+    const syncBtn = document.getElementById('sync-btn');
+    const accountModal = document.getElementById('account-modal');
+    const accountClose = document.getElementById('account-modal-close');
+    const accountDone = document.getElementById('account-modal-done');
+    
+    if (syncBtn && accountModal) {
+        syncBtn.addEventListener('click', () => {
+            updateSyncUI();
+            accountModal.classList.add('active');
+        });
+    }
+    if (accountClose && accountModal) {
+        accountClose.addEventListener('click', () => {
+            accountModal.classList.remove('active');
+        });
+    }
+    if (accountDone && accountModal) {
+        accountDone.addEventListener('click', () => {
+            accountModal.classList.remove('active');
+        });
+    }
+    
+    // Sync Actions
+    const btnCreateSync = document.getElementById('btn-create-sync');
+    if (btnCreateSync) {
+        btnCreateSync.addEventListener('click', createCloudSyncAccount);
+    }
+    
+    const btnManualSync = document.getElementById('btn-manual-sync');
+    if (btnManualSync) {
+        btnManualSync.addEventListener('click', () => {
+            if (userProgress.syncCode) {
+                fetchProgressFromCloud(userProgress.syncCode);
+            } else {
+                alert('لم يتم إنشاء أو ربط كود مزامنة بعد. اضغط على "إنشاء كود مزامنة جديد" أولاً.');
+            }
+        });
+    }
+    
+    const btnLinkSync = document.getElementById('btn-link-sync');
+    const syncInputCode = document.getElementById('sync-input-code');
+    if (btnLinkSync && syncInputCode) {
+        btnLinkSync.addEventListener('click', () => {
+            linkCloudSyncAccount(syncInputCode.value);
+        });
+    }
+    
+    const btnExportJson = document.getElementById('btn-export-json');
+    if (btnExportJson) {
+        btnExportJson.addEventListener('click', exportProgressToFile);
+    }
+    
+    const importFileInput = document.getElementById('import-file-input');
+    if (importFileInput) {
+        importFileInput.addEventListener('change', importProgressFromFile);
+    }
+    
+    // Bookmark controls
+    const bookmarkJumpBtn = document.getElementById('bookmark-jump-btn');
+    if (bookmarkJumpBtn) {
+        bookmarkJumpBtn.addEventListener('click', goToBookBookmark);
+    }
+    
+    const bookmarkRemoveBtn = document.getElementById('bookmark-remove-btn');
+    if (bookmarkRemoveBtn) {
+        bookmarkRemoveBtn.addEventListener('click', removeBookBookmark);
+    }
+
     // Theme toggle
     const themeToggle = document.getElementById('theme-toggle');
     if (themeToggle) {
