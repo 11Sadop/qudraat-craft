@@ -1,8 +1,7 @@
-// Vercel Serverless Function for Qudurat-Craft Cloud Sync
-// Bypasses browser CORS restrictions by fetching jsonblob server-side
+// Vercel Serverless Function for Qudurat-Craft Cloud Sync (/api/sync.js)
+// Proxies storage requests server-side to bypass browser CORS & Mobile Safari issues
 
 export default async function handler(req, res) {
-    // Set CORS Headers for all client requests
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -12,65 +11,100 @@ export default async function handler(req, res) {
     );
 
     if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+        return res.status(200).end();
     }
 
     try {
         if (req.method === 'POST') {
-            // Create new cloud sync record
-            const payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-            const upstreamRes = await fetch('https://jsonblob.com/api/jsonBlob', {
+            const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+            
+            // Generate a friendly 6-digit PIN
+            const pinCode = Math.floor(100000 + Math.random() * 900000).toString();
+            const topic = `qudurat_sync_${pinCode}`;
+            
+            // Publish to ntfy server-side
+            await fetch(`https://ntfy.sh/${topic}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(body)
             });
 
-            if (!upstreamRes.ok) {
-                return res.status(upstreamRes.status).json({ error: 'Upstream cloud error' });
-            }
+            // Also publish to jsonblob for redundancy
+            try {
+                await fetch('https://jsonblob.com/api/jsonBlob', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+            } catch (e) {}
 
-            const blobId = upstreamRes.headers.get('x-jsonblob-id') || 
-                           (upstreamRes.headers.get('location') || '').split('/').pop();
-
-            if (!blobId) {
-                return res.status(500).json({ error: 'Failed to extract sync code' });
-            }
-
-            return res.status(200).json({ syncCode: blobId, success: true });
+            return res.status(200).json({ syncCode: pinCode, success: true });
         }
 
         if (req.method === 'GET') {
-            // Retrieve progress by sync code
             const { code } = req.query;
             if (!code) return res.status(400).json({ error: 'Missing sync code' });
 
-            const upstreamRes = await fetch(`https://jsonblob.com/api/jsonBlob/${code}`, {
-                headers: { 'Accept': 'application/json' }
-            });
+            const cleanCode = code.trim();
+            
+            // 1. Try ntfy server-side
+            try {
+                const topic = `qudurat_sync_${cleanCode}`;
+                const ntfyRes = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
+                if (ntfyRes.ok) {
+                    const text = await ntfyRes.text();
+                    if (text.trim()) {
+                        const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
+                        const messageEvents = lines
+                            .map(l => { try { return JSON.parse(l); } catch(e) { return null; } })
+                            .filter(obj => obj && obj.event === 'message' && obj.message);
 
-            if (!upstreamRes.ok) {
-                return res.status(upstreamRes.status).json({ error: 'Sync code not found or expired' });
-            }
+                        if (messageEvents.length > 0) {
+                            const lastMsgObj = messageEvents[messageEvents.length - 1];
+                            const cloudPayload = JSON.parse(lastMsgObj.message);
+                            return res.status(200).json({ data: cloudPayload, success: true });
+                        }
+                    }
+                }
+            } catch (e) {}
 
-            const data = await upstreamRes.json();
-            return res.status(200).json({ data, success: true });
+            // 2. Try jsonblob fallback server-side
+            try {
+                const jsonblobRes = await fetch(`https://jsonblob.com/api/jsonBlob/${cleanCode}`, {
+                    headers: { 'Accept': 'application/json' }
+                });
+                if (jsonblobRes.ok) {
+                    const data = await jsonblobRes.json();
+                    return res.status(200).json({ data, success: true });
+                }
+            } catch (e) {}
+
+            return res.status(404).json({ error: 'لم يتم العثور على بيانات مرتبطة بهذا الكود' });
         }
 
         if (req.method === 'PUT') {
-            // Update existing progress record
-            const { syncCode, progress } = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+            const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+            const { syncCode, progress } = body || {};
             if (!syncCode) return res.status(400).json({ error: 'Missing syncCode' });
 
-            const upstreamRes = await fetch(`https://jsonblob.com/api/jsonBlob/${syncCode}`, {
-                method: 'PUT',
+            const cleanCode = syncCode.trim();
+            const topic = `qudurat_sync_${cleanCode}`;
+
+            // Sync to ntfy server-side
+            await fetch(`https://ntfy.sh/${topic}`, {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ progress, updated_at: new Date().toISOString() })
             });
 
-            if (!upstreamRes.ok) {
-                return res.status(upstreamRes.status).json({ error: 'Failed to update cloud progress' });
-            }
+            // Sync to jsonblob fallback
+            try {
+                await fetch(`https://jsonblob.com/api/jsonBlob/${cleanCode}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ progress, updated_at: new Date().toISOString() })
+                });
+            } catch (e) {}
 
             return res.status(200).json({ success: true });
         }
@@ -78,7 +112,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method not allowed' });
 
     } catch (err) {
-        console.error('Serverless Sync Error:', err);
+        console.error('Serverless Sync API Error:', err);
         return res.status(500).json({ error: err.message || 'Internal Server Error' });
     }
 }
