@@ -313,15 +313,9 @@ async function handleLoginSubmit(e) {
 
         userProgress.account = { username: username.trim().toLowerCase(), password };
         if (data.progress) {
-            userProgress.completed = { ...userProgress.completed, ...(data.progress.completed || {}) };
-            
-            const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
-            (data.progress.incorrectQuestions || []).forEach(q => {
-                if (!existingMistakeTitles.has(q.title)) {
-                    userProgress.incorrectQuestions.push(q);
-                }
-            });
-
+            // REPLACE local data with cloud data (source of truth is the cloud)
+            userProgress.completed = data.progress.completed || {};
+            userProgress.incorrectQuestions = data.progress.incorrectQuestions || [];
             if (data.progress.studyBookmark) {
                 userProgress.studyBookmark = data.progress.studyBookmark;
             }
