@@ -1222,7 +1222,8 @@ function submitQuiz() {
         
         let passageHTML = '';
         const passage = passageMappings[idx];
-        if (passage) {
+        const prevPassage = idx > 0 ? passageMappings[idx - 1] : null;
+        if (passage && passage !== prevPassage) {
             passageHTML = `
                 <div class="pdf-passage-inline" style="margin-bottom: 12px; background: rgba(139, 92, 246, 0.03); border: 1px dashed rgba(139, 92, 246, 0.2); padding: 12px; border-radius: 12px; text-align: right;">
                     <div class="pdf-passage-label" style="font-size:12px; font-weight:700; color:var(--accent-color); margin-bottom:6px;"><i class="fa-solid fa-paragraph" style="margin-left:6px;"></i>نص الاستيعاب والقراءة:</div>
@@ -1418,7 +1419,6 @@ function startScrollQuiz() {
         } else if ((q.type === 2 || q.type === 4) && !isPledgeQuestion(q)) {
             activeQuestionsList.push(q);
             passageMappings.push(currentPassage);
-            currentPassage = null; // reset after attaching
         }
     }
 
@@ -1440,9 +1440,10 @@ function startScrollQuiz() {
     container.innerHTML = '';
 
     activeQuestionsList.forEach((q, qIdx) => {
-        // Passage block if present
+        // Passage block if present (only show once per group of questions sharing the same passage)
         const passage = passageMappings[qIdx];
-        if (passage) {
+        const prevPassage = qIdx > 0 ? passageMappings[qIdx - 1] : null;
+        if (passage && passage !== prevPassage) {
             const passageBlock = document.createElement('div');
             passageBlock.className = 'pdf-passage-inline';
             passageBlock.innerHTML = `
@@ -1601,7 +1602,8 @@ function submitScrollQuiz() {
         });
         let passageHTML = '';
         const passage = passageMappings[qIdx];
-        if (passage) {
+        const prevPassage = qIdx > 0 ? passageMappings[qIdx - 1] : null;
+        if (passage && passage !== prevPassage) {
             passageHTML = `
                 <div class="pdf-passage-inline" style="margin-bottom: 12px; background: rgba(139, 92, 246, 0.03); border: 1px dashed rgba(139, 92, 246, 0.2); padding: 12px; border-radius: 12px; text-align: right;">
                     <div class="pdf-passage-label" style="font-size:12px; font-weight:700; color:var(--accent-color); margin-bottom:6px;"><i class="fa-solid fa-paragraph" style="margin-left:6px;"></i>نص الاستيعاب والقراءة:</div>
