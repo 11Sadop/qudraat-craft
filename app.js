@@ -273,54 +273,39 @@ async function handleLoginSubmit(e) {
     const username = usernameInput.value.trim();
     const password = passwordInput.value;
 
+    if (!username || !password) {
+        if (errorBanner) {
+            errorBanner.innerText = 'يرجى إدخال اسم المستخدم وكلمة المرور.';
+            errorBanner.style.display = 'block';
+        }
+        return;
+    }
+
     if (errorBanner) errorBanner.style.display = 'none';
+
+    const submitBtn = document.querySelector('#auth-form-login button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = '⏳ جاري التحقق...'; }
 
     try {
         showToast('جاري تسجيل الدخول وجلب بيانات الحساب...', 'fa-spinner fa-spin');
-        let data = null;
-        try {
-            const res = await fetch('/api/auth?action=login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            if (res.ok) data = await res.json();
-        } catch (e) {}
 
-        // Fallback for localhost testing
-        if (!data) {
-            const topic = `qudurat_user_${username.toLowerCase()}`;
-            const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1&since=all`);
-            if (res.ok) {
-                const text = await res.text();
-                if (text.trim()) {
-                    const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
-                    const messageEvents = lines
-                        .map(l => { try { return JSON.parse(l); } catch(e) { return null; } })
-                        .filter(obj => obj && obj.event === 'message' && obj.message);
+        const res = await fetch('/api/auth?action=login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
 
-                    if (messageEvents.length > 0) {
-                        const lastMsgObj = messageEvents[messageEvents.length - 1];
-                        const userData = JSON.parse(lastMsgObj.message);
-                        if (userData.password === password) {
-                            data = { success: true, user: { username }, progress: userData.progress };
-                        } else {
-                            data = { error: 'كلمة المرور غير صحيحة' };
-                        }
-                    }
-                }
-            }
-        }
+        const data = await res.json();
 
-        if (!data || data.error) {
+        if (!res.ok || data.error) {
             if (errorBanner) {
-                errorBanner.innerText = (data && data.error) || 'اسم المستخدم غير موجود أو تعذر الاتصال بالسحابة.';
+                errorBanner.innerText = data.error || 'فشل تسجيل الدخول. تأكد من اسم المستخدم وكلمة المرور.';
                 errorBanner.style.display = 'block';
             }
             return;
         }
 
-        userProgress.account = { username, password };
+        userProgress.account = { username: username.trim().toLowerCase(), password };
         if (data.progress) {
             userProgress.completed = { ...userProgress.completed, ...(data.progress.completed || {}) };
             
@@ -349,9 +334,11 @@ async function handleLoginSubmit(e) {
     } catch (err) {
         console.error("Login Error:", err);
         if (errorBanner) {
-            errorBanner.innerText = 'حدث خطأ أثناء الاتصال بالحساب. حاول لاحقاً.';
+            errorBanner.innerText = 'تعذر الاتصال بالخادم. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.';
             errorBanner.style.display = 'block';
         }
+    } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fa-solid fa-right-to-bracket"></i> تسجيل الدخول 🚀'; }
     }
 }
 
@@ -367,6 +354,14 @@ async function handleRegisterSubmit(e) {
     const password = passwordInput.value;
     const confirmPassword = confirmInput.value;
 
+    if (!username || !password) {
+        if (errorBanner) {
+            errorBanner.innerText = 'يرجى إدخال اسم المستخدم وكلمة المرور.';
+            errorBanner.style.display = 'block';
+        }
+        return;
+    }
+
     if (errorBanner) errorBanner.style.display = 'none';
 
     if (password !== confirmPassword) {
@@ -377,39 +372,29 @@ async function handleRegisterSubmit(e) {
         return;
     }
 
+    const submitBtn = document.querySelector('#auth-form-register button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = '⏳ جاري الإنشاء...'; }
+
     try {
         showToast('جاري إنشاء الحساب وحفظ بياناتك سحابياً...', 'fa-spinner fa-spin');
-        let data = null;
-        try {
-            const res = await fetch('/api/auth?action=register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, progress: userProgress })
-            });
-            if (res.ok) data = await res.json();
-        } catch (e) {}
 
-        // Fallback for localhost testing
-        if (!data) {
-            const topic = `qudurat_user_${username.toLowerCase()}`;
-            const userData = { username, password, progress: userProgress, created_at: new Date().toISOString() };
-            await fetch(`https://ntfy.sh/${topic}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(userData)
-            });
-            data = { success: true, user: { username }, progress: userProgress };
-        }
+        const res = await fetch('/api/auth?action=register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, progress: userProgress })
+        });
 
-        if (!data || data.error) {
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
             if (errorBanner) {
-                errorBanner.innerText = (data && data.error) || 'فشل إنشاء الحساب.';
+                errorBanner.innerText = data.error || 'فشل إنشاء الحساب. حاول مرة أخرى.';
                 errorBanner.style.display = 'block';
             }
             return;
         }
 
-        userProgress.account = { username, password };
+        userProgress.account = { username: username.trim().toLowerCase(), password };
         saveProgress(false);
         updateAuthUI();
 
@@ -420,9 +405,11 @@ async function handleRegisterSubmit(e) {
     } catch (err) {
         console.error("Register Error:", err);
         if (errorBanner) {
-            errorBanner.innerText = 'حدث خطأ أثناء إنشاء الحساب. حاول لاحقاً.';
+            errorBanner.innerText = 'تعذر الاتصال بالخادم. تأكد من اتصالك بالإنترنت وحاول مرة أخرى.';
             errorBanner.style.display = 'block';
         }
+    } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = '<i class="fa-solid fa-user-plus"></i> إنشاء الحساب 🚀'; }
     }
 }
 
