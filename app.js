@@ -43,6 +43,7 @@ let bookCurrentPageIndex = 0;
 let bookPagesKeys = [];
 let lastQuizzesCount = 0;
 let lastPDFBookCount = 0;
+let bookPageStartOffset = 0; // Which global model index we started rendering from (for jump support)
 
 // Local Storage for progress
 let userProgress = {
@@ -190,8 +191,7 @@ function goToBookBookmark() {
         alert('لم تقم بحفظ أي علامة توقف بعد.');
         return;
     }
-    const { cleanKey, numPart, title } = userProgress.studyBookmark;
-    const targetId = `pdf-page-${cleanKey}`;
+    const { cleanKey } = userProgress.studyBookmark;
     
     // Step 1: Always switch to the book tab first
     const tabBook = document.getElementById('tab-book');
@@ -204,23 +204,9 @@ function goToBookBookmark() {
         if (bookContent) bookContent.style.display = 'flex';
     }
     
-    // Step 2: Scroll to bookmark (render if needed)
-    const doScroll = () => {
-        const el = document.getElementById(targetId);
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            el.style.outline = '4px solid #f59e0b';
-            setTimeout(() => { el.style.outline = 'none'; }, 2500);
-        }
-    };
-    
-    let element = document.getElementById(targetId);
-    if (!element) {
-        showToast('جاري تحميل وتجهيز النموذج لعلامة التوقف...', 'fa-spinner fa-spin');
-        forceRenderUpToKey(cleanKey, doScroll);
-    } else {
-        doScroll();
-    }
+    // Step 2: Use jumpToBookSection for instant, no-freeze navigation
+    showToast('جاري الانتقال لعلامة التوقف...', 'fa-bookmark');
+    jumpToBookSection(cleanKey, '#f59e0b');
 }
 
 function updateBookmarkUI() {
@@ -827,7 +813,8 @@ function renderPDFBook(data, filterText = '') {
     } else {
         if (emptyEl) emptyEl.style.display = 'none';
         
-        // Initial render: load first 10 pages
+        // Initial render: reset offset and load first 10 pages
+        bookPageStartOffset = 0;
         loadMorePDFPages();
     }
 }
@@ -856,12 +843,14 @@ function loadMorePDFPagesBatch(batchSize = 10) {
     });
     
     const currentRenderedCount = container.querySelectorAll('.pdf-page').length;
-    if (currentRenderedCount >= matchingKeys.length) return;
+    // Use bookPageStartOffset to calculate actual global index
+    const nextGlobalIdx = bookPageStartOffset + currentRenderedCount;
+    if (nextGlobalIdx >= matchingKeys.length) return;
     
-    const nextBatch = matchingKeys.slice(currentRenderedCount, currentRenderedCount + batchSize);
+    const nextBatch = matchingKeys.slice(nextGlobalIdx, nextGlobalIdx + batchSize);
     
     nextBatch.forEach((key, idx) => {
-        const globalIdx = currentRenderedCount + idx;
+        const globalIdx = nextGlobalIdx + idx;
         const model = data[key];
         const modelTitle = model.title || key;
         const cleanKey = key.replace(/[^a-zA-Z0-9]/g, '_');
@@ -981,7 +970,51 @@ function hideBookLoader() {
     if (loader) loader.style.display = 'none';
 }
 
-// Force render up to a specific key asynchronously to prevent browser freezes
+// Jump directly to a section without rendering all pages before it
+// This is O(1) instead of O(n) - works fast on mobile
+function jumpToBookSection(cleanKey, highlightColor) {
+    const data = quizzesData;
+    const filterText = currentPDFFilterText;
+    const container = document.getElementById('pdf-book-container');
+    if (!container) return;
+    
+    const keys = Object.keys(data).sort((a, b) => {
+        const aNum = parseInt(a.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt(b.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+        return aNum - bNum;
+    });
+    
+    const matchingKeys = keys.filter(key => {
+        const model = data[key];
+        const modelTitle = model.title || key;
+        return !filterText || modelTitle.toLowerCase().includes(filterText.toLowerCase()) || key.toLowerCase().includes(filterText.toLowerCase());
+    });
+    
+    const targetIdx = matchingKeys.findIndex(key => key.replace(/[^a-zA-Z0-9]/g, '_') === cleanKey);
+    if (targetIdx === -1) return;
+    
+    // Start rendering a few pages BEFORE the target so user has context
+    const startIdx = Math.max(0, targetIdx - 2);
+    
+    // Clear current DOM and set new offset
+    container.innerHTML = '';
+    bookPageStartOffset = startIdx;
+    
+    // Render target section + surrounding pages immediately
+    loadMorePDFPagesBatch(8);
+    
+    // Scroll to target
+    const color = highlightColor || 'var(--accent-color)';
+    const targetId = `pdf-page-${cleanKey}`;
+    const el = document.getElementById(targetId);
+    if (el) {
+        el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        el.style.outline = `3px solid ${color}`;
+        setTimeout(() => { el.style.outline = 'none'; }, 2000);
+    }
+}
+
+// Force render up to a specific key - only used for bookmark (keeps scroll position)
 function forceRenderUpToKey(targetCleanKey, callback) {
     const data = quizzesData;
     const filterText = currentPDFFilterText;
@@ -1351,23 +1384,9 @@ function setupEventHandlers() {
     if (bookJumpSelector) {
         bookJumpSelector.addEventListener('change', (e) => {
             const cleanKey = e.target.value;
-            const targetId = `pdf-page-${cleanKey}`;
-            
-            const doScroll = () => {
-                const element = document.getElementById(targetId);
-                if (element) {
-                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    element.style.outline = '3px solid var(--accent-color)';
-                    setTimeout(() => { element.style.outline = 'none'; }, 1500);
-                }
-            };
-            
-            if (!document.getElementById(targetId)) {
-                // Not rendered yet — force render up to this section first, THEN scroll
-                forceRenderUpToKey(cleanKey, doScroll);
-            } else {
-                doScroll();
-            }
+            // Use jumpToBookSection: clears DOM and re-renders from near target
+            // This is instant even for section 200 on mobile
+            jumpToBookSection(cleanKey);
         });
     }
     
