@@ -358,9 +358,15 @@ function renderModelsList(data, filterText = '') {
 }
 
 // Render all models sequentially as a single compiled PDF-style document
+let currentPDFFilterText = '';
+
+// Render all models sequentially as a single compiled PDF-style document
 function renderPDFBook(data, filterText = '') {
     const container = document.getElementById('pdf-book-container');
     if (!container) return;
+    
+    currentPDFFilterText = filterText;
+    container.innerHTML = '';
     
     const keys = Object.keys(data).sort((a, b) => {
         const aNum = parseInt(a.replace(/[^0-9]/g, '')) || 0;
@@ -368,141 +374,31 @@ function renderPDFBook(data, filterText = '') {
         return aNum - bNum;
     });
     
-    // Build DOM elements only if count changed or container is empty
-    if (keys.length !== lastPDFBookCount || container.children.length <= 1) {
-        container.innerHTML = '';
-        
-        keys.forEach((key, idx) => {
-            const model = data[key];
-            const modelTitle = model.title || key;
-            const cleanKey = key.replace(/[^a-zA-Z0-9]/g, '_');
-            
-            const pageEl = document.createElement('div');
-            pageEl.className = 'pdf-page';
-            pageEl.id = `pdf-page-${cleanKey}`;
-            pageEl.style.transition = 'outline 0.3s ease';
-            
-            let passageHTML = '';
-            const passageQuestions = model.questions.filter(q => q.type === 0);
-            if (passageQuestions.length > 0 && passageQuestions[0].title && passageQuestions[0].title.trim().length > 40) {
-                passageHTML = `
-                    <div class="pdf-passage">
-                        <strong style="display:block; margin-bottom: 8px;"><i class="fa-solid fa-align-right" style="margin-left: 6px;"></i>نص الاستيعاب والقراءة:</strong>
-                        <div dir="auto">${passageQuestions[0].title.replace(/\n/g, '<br>')}</div>
-                    </div>
-                `;
-            }
-            
-            let questionsHTML = '';
-            let qCounter = 0;
-            
-            // Build sections: each type=0 passage is followed by its MCQ questions
-            const allQ = model.questions.filter(q => !isPledgeQuestion(q));
-            let i = 0;
-            while (i < allQ.length) {
-                const q = allQ[i];
-                
-                if (q.type === 0 && q.choices.length === 0) {
-                    // This is a passage/reading text - show it as a passage block
-                    const passageText = q.title || '';
-                    if (passageText.trim().length > 10) {
-                        questionsHTML += `
-                            <div class="pdf-passage-inline">
-                                <div class="pdf-passage-label"><i class="fa-solid fa-paragraph" style="margin-left: 6px;"></i>نص الاستيعاب والقراءة:</div>
-                                <div class="pdf-passage-text" dir="auto">${passageText.replace(/\n/g, '<br>')}</div>
-                            </div>
-                        `;
-                    }
-                    i++;
-                } else if (q.type === 2 || q.type === 4) {
-                    // MCQ question - show it
-                    qCounter++;
-                    let optionsHTML = '';
-                    q.choices.forEach((choice, cIdx) => {
-                        const prefix = prefixes[cIdx] || '';
-                        const isCorrect = choice === q.correct_answer;
-                        const highlightClass = isCorrect ? 'highlighted' : '';
-                        const iconHTML = isCorrect ? '<i class="fa-solid fa-check" style="margin-left: 4px; color: #1a1a1a;"></i>' : '';
-                        optionsHTML += `
-                            <div class="pdf-option ${highlightClass}" dir="auto">
-                                <span><strong>${prefix}.</strong> ${choice}</span>
-                                ${iconHTML}
-                            </div>
-                        `;
-                    });
-                    
-                    questionsHTML += `
-                        <div class="pdf-question">
-                            <div class="pdf-question-title" dir="auto">${qCounter}. ${q.title.replace(/\n/g, '<br>')}</div>
-                            <div class="pdf-options-list">
-                                ${optionsHTML}
-                            </div>
-                        </div>
-                    `;
-                    i++;
-                } else {
-                    i++;
-                }
-            }
-            
-            const pageNum = idx + 1;
-            pageEl.innerHTML = `
-                <div class="pdf-page-header">
-                    <span>سبحان الله وبحمده سبحان الله العظيم</span>
-                    <span>النموذج ${pageNum}</span>
-                </div>
-                <div class="pdf-page-title">${modelTitle}</div>
-                ${passageHTML}
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                    ${questionsHTML}
-                </div>
-                <div class="pdf-page-footer">
-                    <span>اللفظي 225 قسم</span>
-                    <span>صفحة ${pageNum}</span>
-                </div>
-            `;
-            container.appendChild(pageEl);
-        });
-        
-        lastPDFBookCount = keys.length;
-    }
+    // Filter matching keys
+    const matchingKeys = keys.filter(key => {
+        const model = data[key];
+        const modelTitle = model.title || key;
+        return !filterText || modelTitle.toLowerCase().includes(filterText.toLowerCase()) || key.toLowerCase().includes(filterText.toLowerCase());
+    });
     
-    // Now, filter visibility and update jump selector
-    let visibleCount = 0;
-    
+    // Update jump selector dropdown (do this immediately so all options are listed)
     const jumpSelector = document.getElementById('book-jump-selector');
     if (jumpSelector) {
         jumpSelector.innerHTML = '';
+        matchingKeys.forEach(key => {
+            const cleanKey = key.replace(/[^a-zA-Z0-9]/g, '_');
+            const option = document.createElement('option');
+            option.value = cleanKey;
+            const numPart = key.split(':')[0].trim();
+            const titlePart = data[key].title || key.split(':')[1] || '';
+            option.innerText = `${numPart}: ${titlePart}`;
+            jumpSelector.appendChild(option);
+        });
     }
-    
-    keys.forEach(key => {
-        const cleanKey = key.replace(/[^a-zA-Z0-9]/g, '_');
-        const pageEl = document.getElementById(`pdf-page-${cleanKey}`);
-        if (pageEl) {
-            const model = data[key];
-            const modelTitle = model.title || key;
-            const matches = !filterText || modelTitle.toLowerCase().includes(filterText.toLowerCase()) || key.toLowerCase().includes(filterText.toLowerCase());
-            if (matches) {
-                pageEl.style.display = 'flex';
-                visibleCount++;
-                
-                if (jumpSelector) {
-                    const option = document.createElement('option');
-                    option.value = cleanKey;
-                    const numPart = key.split(':')[0].trim();
-                    const titlePart = model.title || key.split(':')[1] || '';
-                    option.innerText = `${numPart}: ${titlePart}`;
-                    jumpSelector.appendChild(option);
-                }
-            } else {
-                pageEl.style.display = 'none';
-            }
-        }
-    });
     
     // Show/hide empty message
     let emptyEl = document.getElementById('pdf-book-empty');
-    if (visibleCount === 0) {
+    if (matchingKeys.length === 0) {
         if (!emptyEl) {
             emptyEl = document.createElement('div');
             emptyEl.id = 'pdf-book-empty';
@@ -516,11 +412,168 @@ function renderPDFBook(data, filterText = '') {
             container.appendChild(emptyEl);
         } else {
             emptyEl.style.display = 'block';
+            container.appendChild(emptyEl);
         }
     } else {
         if (emptyEl) emptyEl.style.display = 'none';
+        
+        // Initial render: load first 10 pages
+        loadMorePDFPages();
     }
 }
+
+// Lazy load batch of 10 pages
+function loadMorePDFPages() {
+    const data = quizzesData;
+    const filterText = currentPDFFilterText;
+    const container = document.getElementById('pdf-book-container');
+    if (!container) return;
+    
+    const keys = Object.keys(data).sort((a, b) => {
+        const aNum = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+        return aNum - bNum;
+    });
+    
+    const matchingKeys = keys.filter(key => {
+        const model = data[key];
+        const modelTitle = model.title || key;
+        return !filterText || modelTitle.toLowerCase().includes(filterText.toLowerCase()) || key.toLowerCase().includes(filterText.toLowerCase());
+    });
+    
+    const currentRenderedCount = container.querySelectorAll('.pdf-page').length;
+    if (currentRenderedCount >= matchingKeys.length) return;
+    
+    const nextBatch = matchingKeys.slice(currentRenderedCount, currentRenderedCount + 10);
+    
+    nextBatch.forEach((key, idx) => {
+        const globalIdx = currentRenderedCount + idx;
+        const model = data[key];
+        const modelTitle = model.title || key;
+        const cleanKey = key.replace(/[^a-zA-Z0-9]/g, '_');
+        
+        const pageEl = document.createElement('div');
+        pageEl.className = 'pdf-page';
+        pageEl.id = `pdf-page-${cleanKey}`;
+        pageEl.style.transition = 'outline 0.3s ease';
+        
+        let passageHTML = '';
+        const passageQuestions = model.questions.filter(q => q.type === 0);
+        if (passageQuestions.length > 0 && passageQuestions[0].title && passageQuestions[0].title.trim().length > 40) {
+            passageHTML = `
+                <div class="pdf-passage">
+                    <strong style="display:block; margin-bottom: 8px;"><i class="fa-solid fa-align-right" style="margin-left: 6px;"></i>نص الاستيعاب والقراءة:</strong>
+                    <div dir="auto">${passageQuestions[0].title.replace(/\n/g, '<br>')}</div>
+                </div>
+            `;
+        }
+        
+        let questionsHTML = '';
+        let qCounter = 0;
+        const allQ = model.questions.filter(q => !isPledgeQuestion(q));
+        let i = 0;
+        
+        while (i < allQ.length) {
+            const q = allQ[i];
+            if (q.type === 0 && q.choices.length === 0) {
+                const passageText = q.title || '';
+                if (passageText.trim().length > 10) {
+                    questionsHTML += `
+                        <div class="pdf-passage-inline">
+                            <div class="pdf-passage-label"><i class="fa-solid fa-paragraph" style="margin-left: 6px;"></i>نص الاستيعاب والقراءة:</div>
+                            <div class="pdf-passage-text" dir="auto">${passageText.replace(/\n/g, '<br>')}</div>
+                        </div>
+                    `;
+                }
+                i++;
+            } else if (q.type === 2 || q.type === 4) {
+                qCounter++;
+                let optionsHTML = '';
+                q.choices.forEach((choice, cIdx) => {
+                    const prefix = prefixes[cIdx] || '';
+                    const isCorrect = choice === q.correct_answer;
+                    const highlightClass = isCorrect ? 'highlighted' : '';
+                    const iconHTML = isCorrect ? '<i class="fa-solid fa-check" style="margin-left: 4px; color: #1a1a1a;"></i>' : '';
+                    optionsHTML += `
+                        <div class="pdf-option ${highlightClass}" dir="auto">
+                            <span><strong>${prefix}.</strong> ${choice}</span>
+                            ${iconHTML}
+                        </div>
+                    `;
+                });
+                
+                questionsHTML += `
+                    <div class="pdf-question">
+                        <div class="pdf-question-title" dir="auto">${qCounter}. ${q.title.replace(/\n/g, '<br>')}</div>
+                        <div class="pdf-options-list">
+                            ${optionsHTML}
+                        </div>
+                    </div>
+                `;
+                i++;
+            } else {
+                i++;
+            }
+        }
+        
+        const pageNum = globalIdx + 1;
+        pageEl.innerHTML = `
+            <div class="pdf-page-header">
+                <span>سبحان الله وبحمده سبحان الله العظيم</span>
+                <span>النموذج ${pageNum}</span>
+            </div>
+            <div class="pdf-page-title">${modelTitle}</div>
+            ${passageHTML}
+            <div style="display:flex; flex-direction:column; gap:8px;">
+                ${questionsHTML}
+            </div>
+            <div class="pdf-page-footer">
+                <span>اللفظي 225 قسم</span>
+                <span>صفحة ${pageNum}</span>
+            </div>
+        `;
+        container.appendChild(pageEl);
+    });
+}
+
+// Force render up to a specific key
+function forceRenderUpToKey(targetCleanKey) {
+    const data = quizzesData;
+    const filterText = currentPDFFilterText;
+    const container = document.getElementById('pdf-book-container');
+    if (!container) return;
+    
+    const keys = Object.keys(data).sort((a, b) => {
+        const aNum = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+        return aNum - bNum;
+    });
+    
+    const matchingKeys = keys.filter(key => {
+        const model = data[key];
+        const modelTitle = model.title || key;
+        return !filterText || modelTitle.toLowerCase().includes(filterText.toLowerCase()) || key.toLowerCase().includes(filterText.toLowerCase());
+    });
+    
+    const targetIdx = matchingKeys.findIndex(key => key.replace(/[^a-zA-Z0-9]/g, '_') === targetCleanKey);
+    if (targetIdx === -1) return;
+    
+    let currentCount = container.querySelectorAll('.pdf-page').length;
+    while (currentCount <= targetIdx) {
+        loadMorePDFPages();
+        currentCount = container.querySelectorAll('.pdf-page').length;
+    }
+}
+
+// Scroll listener to load more pages dynamically
+window.addEventListener('scroll', () => {
+    const tabBook = document.getElementById('tab-book');
+    if (tabBook && tabBook.classList.contains('active')) {
+        if ((window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 800) {
+            loadMorePDFPages();
+        }
+    }
+});
 
 // Event Handlers Setup
 function setupEventHandlers() {
@@ -694,8 +747,14 @@ function setupEventHandlers() {
     const bookJumpSelector = document.getElementById('book-jump-selector');
     if (bookJumpSelector) {
         bookJumpSelector.addEventListener('change', (e) => {
-            const targetId = `pdf-page-${e.target.value}`;
-            const element = document.getElementById(targetId);
+            const cleanKey = e.target.value;
+            const targetId = `pdf-page-${cleanKey}`;
+            let element = document.getElementById(targetId);
+            if (!element) {
+                // Not rendered in DOM yet because of lazy loading - force render up to this key
+                forceRenderUpToKey(cleanKey);
+                element = document.getElementById(targetId);
+            }
             if (element) {
                 element.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 // Highlight the page momentarily to draw attention
