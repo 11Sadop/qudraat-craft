@@ -879,7 +879,8 @@ function loadMorePDFPagesBatch(batchSize = 10) {
             const q = allQ[i];
             if (q.type === 0 && q.choices.length === 0) {
                 const passageText = q.title || '';
-                if (passageText.trim().length > 10) {
+                // Use isValidPassageText to filter short labels like "اسم الطالب:"
+                if (isValidPassageText(passageText)) {
                     questionsHTML += `
                         <div class="pdf-passage-inline">
                             <div class="pdf-passage-label"><i class="fa-solid fa-paragraph" style="margin-left: 6px;"></i>نص الاستيعاب والقراءة:</div>
@@ -1111,11 +1112,47 @@ function setupEventHandlers() {
     const btnLogoutAccount = document.getElementById('btn-logout-account');
     if (btnLogoutAccount) {
         btnLogoutAccount.addEventListener('click', () => {
+            // On logout: clear account but KEEP progress locally
+            // (So next login will replace local with cloud — no merge confusion)
             userProgress.account = null;
             saveProgress(false);
             updateAuthUI();
+            updateStatsDashboard();
             showToast('تم تسجيل الخروج بنجاح.');
             if (authModal) authModal.classList.remove('active');
+        });
+    }
+
+    // Force push local data to cloud (fixes inflated stats)
+    const btnForcePush = document.getElementById('btn-force-push-cloud');
+    if (btnForcePush) {
+        btnForcePush.addEventListener('click', async () => {
+            if (!userProgress.account) {
+                showToast('سجّل دخولك أولاً ثم اضغط هذا الزر.', 'fa-triangle-exclamation');
+                return;
+            }
+            btnForcePush.disabled = true;
+            btnForcePush.innerText = '⏳ جاري الرفع...';
+            try {
+                const res = await fetch(getApiUrl('save_progress'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: userProgress.account.username,
+                        password: userProgress.account.password,
+                        progress: userProgress
+                    })
+                });
+                if (res.ok) {
+                    showToast('✅ تم رفع بياناتك الصحيحة للسحابة! سجّل دخولك الآن من الجوال.');
+                } else {
+                    showToast('فشل الرفع. تحقق من اتصالك.', 'fa-triangle-exclamation');
+                }
+            } catch(e) {
+                showToast('تعذر الاتصال بالسحابة.', 'fa-triangle-exclamation');
+            }
+            btnForcePush.disabled = false;
+            btnForcePush.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> رفع بياناتي للسحابة الآن';
         });
     }
     

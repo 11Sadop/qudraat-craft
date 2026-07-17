@@ -371,13 +371,18 @@
                 <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">
                     حسابك متصل ومزامن سحابياً تلقائياً. أي اختبار تحله سيتم حفظه مباشرة على حسابك ويمكنك فتح حسابك من أي جهاز آخر!
                 </p>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button id="btn-force-push-cloud" class="btn-primary" style="width: 100%; padding: 12px; justify-content: center; gap: 8px; background: linear-gradient(135deg, #059669, #10b981); border: none; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; color: white;">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> رفع بياناتي للسحابة الآن
+                </button>
+                <p style="font-size: 11px; color: var(--text-secondary);">اضغط الزر أعلاه من البي سي لإصلاح إحصائيات الجوال</p>
+                <div style="display: flex; gap: 10px; margin-top: 4px;">
                     <button class="btn-secondary" id="btn-logout-account" style="flex: 1; padding: 12px; justify-content: center; color: var(--error-color); border-color: rgba(239,68,68,0.2);">
                         <i class="fa-solid fa-right-from-bracket"></i> تسجيل الخروج
                     </button>
                     <button class="btn-secondary" id="auth-modal-close-logged" style="flex: 1; padding: 12px; justify-content: center;">إغلاق</button>
                 </div>
             </div>
+
 
             <!-- Logged Out View -->
             <div id="auth-logged-out-view">
