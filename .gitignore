@@ -1,0 +1,12 @@
+scraping_progress.log
+__pycache__/
+*.log
+screenshot*.png
+verify*.py
+check*.py
+inspect*.py
+run_selenium*.py
+node_modules/
+.tempmediaStorage/
+*.py
+*.txt

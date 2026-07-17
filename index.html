@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تطبيق منصة اختبارات القدرات التفاعلية PWA</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="تطبيق ويب تفاعلي تقدمي للمذاكرة وحل نماذج اختبارات القدرات المحوسبة للقسمين اللفظي والكمي مع الإجابات الصحيحة والتوقيت والمحاكاة الكاملة.">
+    <meta name="theme-color" content="#8b5cf6">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- PWA Icons -->
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    
+    <!-- FontAwesome & Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+    <!-- Glow effects -->
+    <div class="bg-glow"></div>
+    <div class="bg-glow-2"></div>
+
+    <div class="app-container">
+        <!-- Top App Bar -->
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-graduation-cap"></i>
+                <span>قُدرات كرافت</span>
+            </div>
+            <div class="header-controls">
+                <button class="btn-icon" id="theme-toggle" title="تغيير المظهر">
+                    <i class="fa-solid fa-moon"></i>
+                </button>
+                <button class="btn-icon" id="info-btn" title="عن التطبيق">
+                    <i class="fa-solid fa-circle-info"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Install PWA Banner -->
+        <div class="install-banner" id="pwa-install-banner">
+            <div class="install-text">
+                <i class="fa-solid fa-circle-down"></i>
+                <div>
+                    <h4>تثبيت التطبيق على جهازك</h4>
+                    <p>قم بتثبيت التطبيق للوصول السريع وحل الاختبارات دون اتصال بالإنترنت.</p>
+                </div>
+            </div>
+            <button class="btn-premium" id="pwa-install-btn" style="background: white; color: var(--accent-color); box-shadow: none;">
+                تثبيت الآن
+            </button>
+        </div>
+
+        <!-- SCREEN 1: Dashboard (Model Selector) -->
+        <div class="screen active" id="dashboard-screen">
+            <!-- Stats -->
+            <div class="stats-banner">
+                <div class="stat-card">
+                    <div class="stat-icon"><i class="fa-solid fa-book-open"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-total-models">0</h3>
+                        <p>إجمالي النماذج</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="color: var(--success-color); background: rgba(16, 185, 129, 0.1);"><i class="fa-solid fa-square-poll-horizontal"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-completed-models">0</h3>
+                        <p>نماذج تم حلها</p>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="color: #3b82f6; background: rgba(59, 130, 246, 0.1);"><i class="fa-solid fa-percent"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-avg-score">0%</h3>
+                        <p>متوسط النسبة</p>
+                    </div>
+                </div>
+                <div class="stat-card" style="border: 1px solid rgba(16, 185, 129, 0.15); background: rgba(16, 185, 129, 0.02);">
+                    <div class="stat-icon" style="color: var(--success-color); background: rgba(16, 185, 129, 0.1);"><i class="fa-solid fa-circle-check"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-total-correct">0</h3>
+                        <p>إجابات صحيحة</p>
+                    </div>
+                </div>
+                <div class="stat-card" style="border: 1px solid rgba(239, 68, 68, 0.15); background: rgba(239, 68, 68, 0.02);">
+                    <div class="stat-icon" style="color: var(--error-color); background: rgba(239, 68, 68, 0.1);"><i class="fa-solid fa-circle-xmark"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-total-incorrect">0</h3>
+                        <p>أخطاء النماذج</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div style="display: flex; gap: 12px; margin-bottom: 24px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; width: 100%;">
+                <button class="btn-tab active" id="tab-quizzes" style="flex: 1; padding: 12px; border-radius: 12px; border: none; background: rgba(139, 92, 246, 0.15); color: var(--accent-color); font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease;">
+                    <i class="fa-solid fa-square-poll-horizontal"></i> الاختبارات والمحاكاة
+                </button>
+                <button class="btn-tab" id="tab-book" style="flex: 1; padding: 12px; border-radius: 12px; border: none; background: transparent; color: var(--text-secondary); font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease;">
+                    <i class="fa-solid fa-book-open"></i> اللفظي 225 قسم
+                </button>
+                <button class="btn-tab" id="tab-mistakes" style="flex: 1; padding: 12px; border-radius: 12px; border: none; background: transparent; color: var(--text-secondary); font-size: 16px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s ease;">
+                    <i class="fa-solid fa-triangle-exclamation"></i> بنك الأخطاء (<span id="stat-mistakes-badge">0</span>)
+                </button>
+            </div>
+
+            <!-- Tab 1: Quizzes Content -->
+            <div id="quizzes-tab-content" style="display: flex; flex-direction: column; gap: 24px; width: 100%;">
+                <!-- Search and Filter Bar -->
+                <div class="search-filter-section">
+                    <div class="search-wrapper">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" class="search-input" id="search-bar" placeholder="ابحث عن نموذج (مثال: الزلازل، السكري، عمر بن عبد العزيز)...">
+                    </div>
+                </div>
+
+                <!-- List of Models -->
+                <div class="models-grid" id="models-list-container">
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 32px; margin-bottom: 12px; color: var(--accent-color);"></i>
+                        <p>جاري تحميل النماذج والأسئلة...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 2: Book Content -->
+            <div id="book-tab-content" style="display: none; flex-direction: column; gap: 24px; width: 100%;">
+                <!-- Sticky Controls Panel for PDF Book -->
+                <div style="position: sticky; top: 0; background: var(--bg-primary); z-index: 10; padding: 12px 0; display: flex; flex-direction: column; gap: 12px; border-bottom: 1px solid var(--border-color); width: 100%;">
+                    <div style="display: flex; gap: 12px; align-items: center; width: 100%; flex-wrap: wrap;">
+                        <!-- Search Box -->
+                        <div class="search-wrapper" style="flex: 2; min-width: 250px;">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" class="search-input" id="book-search-bar" placeholder="ابحث في الكتاب المحلول (مثال: الزلازل، السكري)...">
+                        </div>
+                        
+                        <!-- Dropdown jump selector -->
+                        <div style="flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 14px; font-weight: 700; color: var(--text-secondary); white-space: nowrap;">انتقال سريع:</span>
+                            <select id="book-jump-selector" style="flex: 1; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border-color); background: var(--bg-secondary); color: var(--text-primary); font-size: 15px; font-weight: 700; outline: none; cursor: pointer; text-align: right;"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PDF Compiled Book Container -->
+                <div class="pdf-book-container" id="pdf-book-container">
+                    <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                        <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 32px; margin-bottom: 12px; color: var(--accent-color);"></i>
+                        <p>جاري تجميع وتجهيز صفحات الكتاب...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Mistakes Content -->
+            <div id="mistakes-tab-content" style="display: none; flex-direction: column; gap: 24px; width: 100%;">
+                <div class="quiz-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 8px; color: var(--error-color);">
+                            <i class="fa-solid fa-triangle-exclamation"></i>
+                            <span>بنك الأخطاء الخاص بي</span>
+                        </h2>
+                        <p style="color: var(--text-secondary); font-size: 13px; font-weight: 600;">مراجعة وحفظ الأسئلة التي أجبت عليها بشكل خاطئ لتصحيحها</p>
+                    </div>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 20px;" id="mistakes-list-container">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+
+        <!-- SCREEN 2: Quiz Player -->
+        <div class="screen" id="quiz-screen">
+            <div class="quiz-header">
+                <div class="quiz-info-section">
+                    <button class="btn-icon" id="quiz-back-btn" title="رجوع للرئيسية">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <div>
+                        <h2 id="quiz-title" style="font-size: 20px; font-weight: 800;">اسم النموذج</h2>
+                        <p id="quiz-progress-text" style="color: var(--text-secondary); font-size: 13px; font-weight: 600;">السؤال 1 من 10</p>
+                    </div>
+                </div>
+                <div class="quiz-timer" id="quiz-timer-container" style="display: none;">
+                    <i class="fa-solid fa-hourglass-half"></i>
+                    <span id="quiz-timer-val">30:00</span>
+                </div>
+            </div>
+
+            <!-- Progress bar -->
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="quiz-progress-fill"></div>
+            </div>
+
+            <!-- Main Body Grid (will support split passage/question layout) -->
+            <div class="quiz-body" id="quiz-body-layout">
+                <!-- Reading Passage Panel (if contains text) -->
+                <div class="passage-panel" id="quiz-passage-panel" style="display: none;">
+                    <h4><i class="fa-solid fa-align-right" style="margin-left: 8px;"></i>نص الاستيعاب والقرائة</h4>
+                    <div id="quiz-passage-content">
+                        <!-- Dynamic passage -->
+                    </div>
+                </div>
+
+                <!-- Question and Choices Panel -->
+                <div class="question-panel">
+                    <div class="question-card">
+                        <div class="question-text" id="quiz-question-text">
+                            <!-- Dynamic question text -->
+                        </div>
+                        <div class="options-list" id="quiz-options-container">
+                            <!-- Dynamic options buttons -->
+                        </div>
+                    </div>
+
+                    <!-- Navigation Footer -->
+                    <div class="quiz-nav">
+                        <button class="btn-secondary" id="nav-prev-btn">السابق</button>
+                        <button class="btn-premium" id="nav-next-btn">التالي <i class="fa-solid fa-chevron-left" style="margin-right: 8px;"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCREEN 2b: Scroll Quiz (all questions at once) -->
+        <div class="screen" id="scroll-quiz-screen">
+            <!-- Sticky Header -->
+            <div class="quiz-header" style="position: sticky; top: 0; z-index: 20; background: var(--bg-primary); border-bottom: 1px solid var(--border-color); padding-bottom: 14px;">
+                <div class="quiz-info-section">
+                    <button class="btn-icon" id="scroll-quiz-back-btn" title="رجوع">
+                        <i class="fa-solid fa-arrow-right"></i>
+                    </button>
+                    <div>
+                        <h2 id="scroll-quiz-title" style="font-size: 18px; font-weight: 800;">اسم النموذج</h2>
+                        <p id="scroll-quiz-counter" style="color: var(--text-secondary); font-size: 13px; font-weight: 600;">إجمالي الأسئلة: 0</p>
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div id="scroll-answered-badge" style="background: rgba(139,92,246,0.15); color: var(--accent-color); padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 700;">أجبت: 0 / 0</div>
+                    <button class="btn-premium" id="scroll-submit-btn" style="padding: 10px 20px; font-size: 14px;">
+                        <i class="fa-solid fa-square-check" style="margin-left: 6px;"></i> تسليم
+                    </button>
+                </div>
+            </div>
+
+            <!-- All Questions Container -->
+            <div id="scroll-questions-container" style="display: flex; flex-direction: column; gap: 28px; padding: 24px 0;"></div>
+        </div>
+
+        <!-- SCREEN 3: Results -->
+        <div class="screen" id="results-screen">
+            <div class="results-card">
+                <div class="score-circle">
+                    <span class="score-num" id="res-score-pct">90%</span>
+                    <span class="score-label" id="res-score-fraction">18 من 20</span>
+                </div>
+                <h3 class="score-feedback" id="res-feedback-text">عمل رائع وممتاز!</h3>
+                <p style="color: var(--text-secondary); max-width: 400px; line-height: 1.6;" id="res-sub-feedback">
+                    لقد أنجزت هذا النموذج بنجاح. يمكنك مراجعة الأسئلة ومعرفة الأخطاء لتطوير مهاراتك.
+                </p>
+
+                <div class="results-stats">
+                    <div class="res-stat">
+                        <h4 style="color: var(--success-color);" id="res-stat-correct">18</h4>
+                        <p>إجابات صحيحة</p>
+                    </div>
+                    <div class="res-stat">
+                        <h4 style="color: var(--error-color);" id="res-stat-incorrect">2</h4>
+                        <p>إجابات خاطئة</p>
+                    </div>
+                </div>
+
+                <div class="results-actions">
+                    <button class="btn-secondary" id="res-home-btn">العودة للرئيسية</button>
+                    <button class="btn-premium" id="res-retry-btn"><i class="fa-solid fa-rotate-right"></i> إعادة المحاولة</button>
+                </div>
+
+                <!-- Review Section -->
+                <div style="width: 100%; border-top: 1px solid var(--border-color); margin-top: 24px; padding-top: 24px; text-align: right;">
+                    <h4 style="font-size: 18px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                        <i class="fa-solid fa-clipboard-check" style="color: var(--accent-color);"></i>
+                        <span>تفاصيل مراجعة الأسئلة</span>
+                    </h4>
+                    <div id="results-review-container" style="display: flex; flex-direction: column; gap: 20px;">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL: Mode Selector -->
+    <div class="modal-overlay" id="mode-modal">
+        <div class="modal-content">
+            <div class="modal-title">اختر وضع التدريب للنموذج</div>
+            <div class="mode-selectors">
+                <!-- Study Mode -->
+                <button class="mode-btn active" id="select-mode-study">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                    <div class="mode-text">
+                        <h5>وضع التدريب والتعلم</h5>
+                        <p>يظهر الإجابة الصحيحة وتوضيحها مباشرة فور اختيارك.</p>
+                    </div>
+                </button>
+
+                <!-- Scroll Mode (NEW) -->
+                <button class="mode-btn" id="select-mode-scroll">
+                    <i class="fa-solid fa-list-check"></i>
+                    <div class="mode-text">
+                        <h5>ورقة الاختبار الكاملة</h5>
+                        <p>جميع الأسئلة تحت بعض في ورقة واحدة — اجب وسلّم بضغطة.</p>
+                    </div>
+                </button>
+                
+                <!-- Exam Mode -->
+                <button class="mode-btn" id="select-mode-exam">
+                    <i class="fa-solid fa-stopwatch"></i>
+                    <div class="mode-text">
+                        <h5>وضع الاختبار والمحاكاة</h5>
+                        <p>مؤقت زمني حقيقي، ولا يتم إظهار النتائج إلا بعد إنهاء الاختبار بالكامل.</p>
+                    </div>
+                </button>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 8px;">
+                <button class="btn-secondary" style="flex: 1;" id="mode-cancel-btn">إلغاء</button>
+                <button class="btn-premium" style="flex: 1;" id="mode-start-btn">ابدأ الآن</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="app.js?v=2"></script>
+</body>
+</html>
