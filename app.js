@@ -801,6 +801,7 @@ function setupEventHandlers() {
     
     // Results actions
     document.getElementById('res-home-btn').addEventListener('click', () => {
+        renderModelsList(quizzesData);
         switchScreen('dashboard-screen');
     });
     
@@ -1163,12 +1164,24 @@ function submitQuiz() {
             `;
         });
         
+        let passageHTML = '';
+        const passage = passageMappings[idx];
+        if (passage) {
+            passageHTML = `
+                <div class="pdf-passage-inline" style="margin-bottom: 12px; background: rgba(139, 92, 246, 0.03); border: 1px dashed rgba(139, 92, 246, 0.2); padding: 12px; border-radius: 12px; text-align: right;">
+                    <div class="pdf-passage-label" style="font-size:12px; font-weight:700; color:var(--accent-color); margin-bottom:6px;"><i class="fa-solid fa-paragraph" style="margin-left:6px;"></i>نص الاستيعاب والقراءة:</div>
+                    <div class="pdf-passage-text" dir="auto" style="font-size:14px; line-height:1.6; color:var(--text-primary); max-height: 200px; overflow-y: auto; padding-left: 8px;">${passage.replace(/\n/g, '<br>')}</div>
+                </div>
+            `;
+        }
+        
         qCard.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <span style="font-size: 13px; font-weight: 700; color: var(--text-secondary);">سؤال رقم ${idx + 1}</span>
                 ${statusBadge}
             </div>
-            <div class="book-question-title" dir="auto">${q.title.replace(/\n/g, '<br>')}</div>
+            ${passageHTML}
+            <div class="book-question-title" dir="auto" style="margin-bottom: 12px;">${q.title.replace(/\n/g, '<br>')}</div>
             <div class="book-options-grid">
                 ${optionsHTML}
             </div>
@@ -1497,7 +1510,18 @@ function submitScrollQuiz() {
             else if (choice === chosen && !isCorrect) { bg = 'rgba(239,68,68,0.12)'; color = 'var(--error-color)'; }
             optionsReview += `<div style="padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; background:${bg}; color:${color}; margin-bottom:6px;">${prefix}. ${choice}</div>`;
         });
+        let passageHTML = '';
+        const passage = passageMappings[qIdx];
+        if (passage) {
+            passageHTML = `
+                <div class="pdf-passage-inline" style="margin-bottom: 12px; background: rgba(139, 92, 246, 0.03); border: 1px dashed rgba(139, 92, 246, 0.2); padding: 12px; border-radius: 12px; text-align: right;">
+                    <div class="pdf-passage-label" style="font-size:12px; font-weight:700; color:var(--accent-color); margin-bottom:6px;"><i class="fa-solid fa-paragraph" style="margin-left:6px;"></i>نص الاستيعاب والقراءة:</div>
+                    <div class="pdf-passage-text" dir="auto" style="font-size:14px; line-height:1.6; color:var(--text-primary); max-height: 200px; overflow-y: auto; padding-left: 8px;">${passage.replace(/\n/g, '<br>')}</div>
+                </div>
+            `;
+        }
         reviewCard.innerHTML = `
+            ${passageHTML}
             <div style="font-weight:700; font-size:15px; margin-bottom:12px; color:${isCorrect ? 'var(--success-color)' : 'var(--error-color)'}">
                 <i class="fa-solid ${isCorrect ? 'fa-circle-check' : 'fa-circle-xmark'}" style="margin-left:6px;"></i>${qIdx + 1}. ${q.title.replace(/\n/g, ' ')}
             </div>
