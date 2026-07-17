@@ -290,7 +290,7 @@ async function handleLoginSubmit(e) {
         // Fallback for localhost testing
         if (!data) {
             const topic = `qudurat_user_${username.toLowerCase()}`;
-            const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
+            const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1&since=all`);
             if (res.ok) {
                 const text = await res.text();
                 if (text.trim()) {

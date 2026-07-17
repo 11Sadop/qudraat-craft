@@ -28,7 +28,7 @@ export default async function handler(req, res) {
 
             // Check if user already exists on cloud
             try {
-                const checkRes = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
+                const checkRes = await fetch(`https://ntfy.sh/${topic}/json?poll=1&since=all`);
                 if (checkRes.ok) {
                     const text = await checkRes.text();
                     if (text.trim()) {
@@ -38,7 +38,10 @@ export default async function handler(req, res) {
                             .filter(obj => obj && obj.event === 'message' && obj.message);
 
                         if (messageEvents.length > 0) {
-                            return res.status(400).json({ error: 'اسم المستخدم مسجل بالفعل. يرجى اختيار اسم آخر أو تسجيل الدخول' });
+                            const existingData = JSON.parse(messageEvents[messageEvents.length - 1].message);
+                            if (existingData.username === cleanUsername && existingData.password !== password) {
+                                return res.status(400).json({ error: 'اسم المستخدم مسجل بالفعل بحساب آخر. يرجى اختيار اسم جديد أو تسجيل الدخول' });
+                            }
                         }
                     }
                 }
@@ -74,14 +77,14 @@ export default async function handler(req, res) {
             const cleanUsername = username.trim().toLowerCase();
             const topic = `qudurat_user_${cleanUsername}`;
 
-            const ntfyRes = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
+            const ntfyRes = await fetch(`https://ntfy.sh/${topic}/json?poll=1&since=all`);
             if (!ntfyRes.ok) {
                 return res.status(400).json({ error: 'تعذر الاتصال بقاعدة البيانات. حاول لاحقاً.' });
             }
 
             const text = await ntfyRes.text();
             if (!text.trim()) {
-                return res.status(404).json({ error: 'اسم المستخدم غير موجود. يرجى إنشاء حساب جديد أولاً' });
+                return res.status(404).json({ error: 'اسم المستخدم غير موجود. يرجى التثبت من الاسم أو إنشاء حساب جديد' });
             }
 
             const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
@@ -90,7 +93,7 @@ export default async function handler(req, res) {
                 .filter(obj => obj && obj.event === 'message' && obj.message);
 
             if (messageEvents.length === 0) {
-                return res.status(404).json({ error: 'اسم المستخدم غير موجود. يرجى إنشاء حساب جديد أولاً' });
+                return res.status(404).json({ error: 'اسم المستخدم غير موجود. يرجى التثبت من الاسم أو إنشاء حساب جديد' });
             }
 
             const lastMsgObj = messageEvents[messageEvents.length - 1];
