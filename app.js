@@ -56,14 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
     loadProgress();
     setupEventHandlers();
     loadQuizzes();
-    
-    // Live update dashboard every 60 seconds while crawler is running
-    setInterval(() => {
-        const dashboardActive = document.getElementById('dashboard-screen').classList.contains('active');
-        if (dashboardActive) {
-            loadQuizzes(true);
-        }
-    }, 60000);
 });
 
 // Load theme from localStorage
@@ -572,8 +564,29 @@ window.addEventListener('scroll', () => {
         if ((window.innerHeight + window.scrollY) >= document.documentElement.scrollHeight - 800) {
             loadMorePDFPages();
         }
+        updateJumpSelectorOnScroll();
     }
 });
+
+// Update the jump selector dropdown to highlight the currently visible page
+function updateJumpSelectorOnScroll() {
+    const pages = document.querySelectorAll('#pdf-book-container .pdf-page');
+    const jumpSelector = document.getElementById('book-jump-selector');
+    if (!jumpSelector || pages.length === 0) return;
+    
+    let activeKey = '';
+    for (let page of pages) {
+        const rect = page.getBoundingClientRect();
+        if (rect.top <= window.innerHeight * 0.4 && rect.bottom >= window.innerHeight * 0.3) {
+            activeKey = page.id.replace('pdf-page-', '');
+            break;
+        }
+    }
+    
+    if (activeKey && jumpSelector.value !== activeKey) {
+        jumpSelector.value = activeKey;
+    }
+}
 
 // Event Handlers Setup
 function setupEventHandlers() {
@@ -1229,6 +1242,26 @@ function startBookMode() {
     }, 100);
 }
 
+// Helper to resolve the reading passage for a given question based on its model database
+function getPassageForQuestion(modelName, questionTitle) {
+    const model = quizzesData[modelName];
+    if (!model) return null;
+    
+    let currentPassage = null;
+    for (let item of model.questions) {
+        if (item.type === 0 && (!item.choices || item.choices.length === 0)) {
+            if (item.title && item.title.trim().length > 10) {
+                currentPassage = item.title;
+            }
+        } else if (item.type === 2 || item.type === 4) {
+            if (item.title === questionTitle) {
+                return currentPassage;
+            }
+        }
+    }
+    return null;
+}
+
 function renderMistakes() {
     const container = document.getElementById('mistakes-list-container');
     if (!container) return;
@@ -1276,6 +1309,18 @@ function renderMistakes() {
             `;
         });
         
+        // Resolve reading passage dynamically for old and new mistakes alike
+        let passageHTML = '';
+        const passage = getPassageForQuestion(q.modelName, q.title);
+        if (passage) {
+            passageHTML = `
+                <div class="pdf-passage-inline" style="margin-bottom: 12px; background: rgba(139, 92, 246, 0.03); border: 1px dashed rgba(139, 92, 246, 0.2); padding: 12px; border-radius: 12px; text-align: right;">
+                    <div class="pdf-passage-label" style="font-size:12px; font-weight:700; color:var(--accent-color); margin-bottom:6px;"><i class="fa-solid fa-paragraph" style="margin-left:6px;"></i>نص الاستيعاب والقراءة:</div>
+                    <div class="pdf-passage-text" dir="auto" style="font-size:14px; line-height:1.6; color:var(--text-primary); max-height: 200px; overflow-y: auto; padding-left: 8px;">${passage.replace(/\n/g, '<br>')}</div>
+                </div>
+            `;
+        }
+        
         qCard.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                 <span style="font-size: 13px; font-weight: 700; color: var(--accent-color);"><i class="fa-solid fa-book" style="margin-left: 6px;"></i>المصدر: ${modelTitle}</span>
@@ -1283,7 +1328,8 @@ function renderMistakes() {
                     <i class="fa-solid fa-trash"></i> إزالة من قائمة الأخطاء
                 </button>
             </div>
-            <div class="book-question-title" dir="auto">${q.title.replace(/\n/g, '<br>')}</div>
+            ${passageHTML}
+            <div class="book-question-title" dir="auto" style="margin-bottom: 12px;">${q.title.replace(/\n/g, '<br>')}</div>
             <div class="book-options-grid">
                 ${optionsHTML}
             </div>
