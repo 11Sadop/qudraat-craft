@@ -414,8 +414,12 @@ function renderPDFBook(data, filterText = '') {
     }
 }
 
-// Lazy load batch of 10 pages
+// Lazy load batch of pages
 function loadMorePDFPages() {
+    loadMorePDFPagesBatch(10);
+}
+
+function loadMorePDFPagesBatch(batchSize = 10) {
     const data = quizzesData;
     const filterText = currentPDFFilterText;
     const container = document.getElementById('pdf-book-container');
@@ -436,7 +440,7 @@ function loadMorePDFPages() {
     const currentRenderedCount = container.querySelectorAll('.pdf-page').length;
     if (currentRenderedCount >= matchingKeys.length) return;
     
-    const nextBatch = matchingKeys.slice(currentRenderedCount, currentRenderedCount + 10);
+    const nextBatch = matchingKeys.slice(currentRenderedCount, currentRenderedCount + batchSize);
     
     nextBatch.forEach((key, idx) => {
         const globalIdx = currentRenderedCount + idx;
@@ -528,12 +532,39 @@ function loadMorePDFPages() {
     });
 }
 
-// Force render up to a specific key
-function forceRenderUpToKey(targetCleanKey) {
+// Show/hide beautiful loading indicators
+function showBookLoader() {
+    let loader = document.getElementById('book-loading-overlay');
+    if (!loader) {
+        loader = document.createElement('div');
+        loader.id = 'book-loading-overlay';
+        loader.style.cssText = "position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; color: white; font-weight: 700; font-size: 16px; gap: 16px; transition: all 0.3s;";
+        loader.innerHTML = `
+            <div style="width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.1); border-top-color: var(--accent-color); border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            <div>جاري تحميل الأقسام... يرجى الانتظار</div>
+            <style>
+                @keyframes spin { to { transform: rotate(360deg); } }
+            </style>
+        `;
+        document.body.appendChild(loader);
+    }
+    loader.style.display = 'flex';
+}
+
+function hideBookLoader() {
+    const loader = document.getElementById('book-loading-overlay');
+    if (loader) loader.style.display = 'none';
+}
+
+// Force render up to a specific key asynchronously to prevent browser freezes
+function forceRenderUpToKey(targetCleanKey, callback) {
     const data = quizzesData;
     const filterText = currentPDFFilterText;
     const container = document.getElementById('pdf-book-container');
-    if (!container) return;
+    if (!container) {
+        if (callback) callback();
+        return;
+    }
     
     const keys = Object.keys(data).sort((a, b) => {
         const aNum = parseInt(a.replace(/[^0-9]/g, '')) || 0;
@@ -548,13 +579,25 @@ function forceRenderUpToKey(targetCleanKey) {
     });
     
     const targetIdx = matchingKeys.findIndex(key => key.replace(/[^a-zA-Z0-9]/g, '_') === targetCleanKey);
-    if (targetIdx === -1) return;
-    
-    let currentCount = container.querySelectorAll('.pdf-page').length;
-    while (currentCount <= targetIdx) {
-        loadMorePDFPages();
-        currentCount = container.querySelectorAll('.pdf-page').length;
+    if (targetIdx === -1) {
+        if (callback) callback();
+        return;
     }
+    
+    showBookLoader();
+    
+    function renderChunk() {
+        let currentCount = container.querySelectorAll('.pdf-page').length;
+        if (currentCount <= targetIdx) {
+            // Render next batch of 10 pages
+            loadMorePDFPagesBatch(10);
+            setTimeout(renderChunk, 5); // Yield control to the browser thread
+        } else {
+            hideBookLoader();
+            if (callback) callback();
+        }
+    }
+    renderChunk();
 }
 
 // Scroll listener to load more pages dynamically
