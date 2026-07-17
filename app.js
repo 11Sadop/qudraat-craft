@@ -284,19 +284,17 @@ async function linkCloudSyncAccount(code) {
         }
         
         const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
-        if (lines.length === 0) {
-            alert("لم يتم العثور على بيانات سحابية مرتبطة بهذا الكود.");
+        const messageEvents = lines
+            .map(l => { try { return JSON.parse(l); } catch(e) { return null; } })
+            .filter(obj => obj && obj.event === 'message' && obj.message);
+
+        if (messageEvents.length === 0) {
+            alert("لم يتم العثور على بيانات سحابية مرتبطة بهذا الكود بعد. يرجى الضغط على 'إنشاء كود مزامنة جديد' من الجهاز الأول أولاً.");
             return;
         }
-        
-        const lastLine = lines[lines.length - 1];
-        const msgObj = JSON.parse(lastLine);
-        if (!msgObj || !msgObj.message) {
-            alert("صيغة البيانات السحابية غير صالحة.");
-            return;
-        }
-        
-        const cloudPayload = JSON.parse(msgObj.message);
+
+        const lastMsgObj = messageEvents[messageEvents.length - 1];
+        const cloudPayload = JSON.parse(lastMsgObj.message);
         const cloudProgress = cloudPayload.progress || cloudPayload;
         
         if (cloudProgress) {
@@ -356,33 +354,35 @@ async function fetchProgressFromCloud(code, silent = false) {
             const text = await res.text();
             if (text.trim()) {
                 const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
-                if (lines.length > 0) {
-                    const msgObj = JSON.parse(lines[lines.length - 1]);
-                    if (msgObj && msgObj.message) {
-                        const cloudPayload = JSON.parse(msgObj.message);
-                        const cloudProgress = cloudPayload.progress || cloudPayload;
+                const messageEvents = lines
+                    .map(l => { try { return JSON.parse(l); } catch(e) { return null; } })
+                    .filter(obj => obj && obj.event === 'message' && obj.message);
+
+                if (messageEvents.length > 0) {
+                    const lastMsgObj = messageEvents[messageEvents.length - 1];
+                    const cloudPayload = JSON.parse(lastMsgObj.message);
+                    const cloudProgress = cloudPayload.progress || cloudPayload;
+                    
+                    if (cloudProgress) {
+                        userProgress.completed = { ...userProgress.completed, ...(cloudProgress.completed || {}) };
                         
-                        if (cloudProgress) {
-                            userProgress.completed = { ...userProgress.completed, ...(cloudProgress.completed || {}) };
-                            
-                            const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
-                            (cloudProgress.incorrectQuestions || []).forEach(q => {
-                                if (!existingMistakeTitles.has(q.title)) {
-                                    userProgress.incorrectQuestions.push(q);
-                                }
-                            });
-                            
-                            if (cloudProgress.studyBookmark) {
-                                userProgress.studyBookmark = cloudProgress.studyBookmark;
+                        const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
+                        (cloudProgress.incorrectQuestions || []).forEach(q => {
+                            if (!existingMistakeTitles.has(q.title)) {
+                                userProgress.incorrectQuestions.push(q);
                             }
-                            
-                            saveProgress(false);
-                            updateStatsDashboard();
-                            updateBookmarkUI();
-                            updateSyncUI();
-                            renderModelsList(quizzesData);
-                            if (!silent) showToast('تم تحديث البيانات من السحابة بنجاح! 🔄');
+                        });
+                        
+                        if (cloudProgress.studyBookmark) {
+                            userProgress.studyBookmark = cloudProgress.studyBookmark;
                         }
+                        
+                        saveProgress(false);
+                        updateStatsDashboard();
+                        updateBookmarkUI();
+                        updateSyncUI();
+                        renderModelsList(quizzesData);
+                        if (!silent) showToast('تم تحديث البيانات من السحابة بنجاح! 🔄');
                     }
                 }
             }
@@ -1364,7 +1364,7 @@ function startQuiz() {
         const q = rawQuestions[i];
         if (q.type === 0) {
             // This is a paragraph/passage text
-            if (q.title && q.title.trim().length > 40) { // Text is long enough to be a passage
+            if (isValidPassageText(q.title)) {
                 currentPassage = q.title;
             }
         } else if ((q.type === 2 || q.type === 4) && !isPledgeQuestion(q)) {
@@ -1729,6 +1729,14 @@ function startBookMode() {
     }, 100);
 }
 
+function isValidPassageText(title) {
+    if (!title || typeof title !== 'string') return false;
+    const trimmed = title.trim();
+    if (trimmed.length < 35) return false;
+    if (trimmed.includes('اسم الطالب') || trimmed.includes('اسمك') || trimmed.includes('كلمة المرور')) return false;
+    return true;
+}
+
 // Helper to resolve the reading passage for a given question based on its model database
 function getPassageForQuestion(modelName, questionTitle) {
     const model = quizzesData[modelName];
@@ -1737,7 +1745,7 @@ function getPassageForQuestion(modelName, questionTitle) {
     let currentPassage = null;
     for (let item of model.questions) {
         if (item.type === 0 && (!item.choices || item.choices.length === 0)) {
-            if (item.title && item.title.trim().length > 10) {
+            if (isValidPassageText(item.title)) {
                 currentPassage = item.title;
             }
         } else if (item.type === 2 || item.type === 4) {
@@ -1856,7 +1864,7 @@ function startScrollQuiz() {
     for (let i = 0; i < rawQuestions.length; i++) {
         const q = rawQuestions[i];
         if (q.type === 0 && q.choices.length === 0) {
-            if (q.title && q.title.trim().length > 10) {
+            if (isValidPassageText(q.title)) {
                 currentPassage = q.title;
             }
         } else if ((q.type === 2 || q.type === 4) && !isPledgeQuestion(q)) {
