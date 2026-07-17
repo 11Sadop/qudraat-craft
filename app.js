@@ -226,51 +226,35 @@ function updateBookmarkUI() {
     }
 }
 
-// Cloud Sync Functions via Vercel Serverless API + jsonblob Fallback
+// Cloud Sync Functions via ntfy.sh (100% CORS-friendly & Instant Cross-Device Sync)
+function generate6DigitPin() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
 async function createCloudSyncAccount() {
     try {
         showToast('جاري إنشاء كود المزامنة السحابية...', 'fa-spinner fa-spin');
+        const syncCode = generate6DigitPin();
+        const topic = `qudurat_sync_${syncCode}`;
+        
         const reqData = {
             progress: userProgress,
             created_at: new Date().toISOString()
         };
         
-        let syncCode = null;
-        try {
-            const res = await fetch('/api/sync', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(reqData)
-            });
-            if (res.ok) {
-                const json = await res.json();
-                if (json && json.syncCode) syncCode = json.syncCode;
-            }
-        } catch (e) {
-            console.warn("API route sync failed, trying fallback...", e);
-        }
-
-        if (!syncCode) {
-            const resDirect = await fetch('https://jsonblob.com/api/jsonBlob', {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify(reqData)
-            });
-            if (resDirect.ok) {
-                syncCode = resDirect.headers.get('x-jsonblob-id') || 
-                           (resDirect.headers.get('location') || '').split('/').pop() || 
-                           (resDirect.headers.get('Location') || '').split('/').pop();
-            }
-        }
+        const res = await fetch(`https://ntfy.sh/${topic}`, {
+            method: 'POST',
+            body: JSON.stringify(reqData)
+        });
         
-        if (!syncCode) throw new Error("تعذر استخراج كود المزامنة من السحابة");
+        if (!res.ok) throw new Error("HTTP " + res.status);
         
         userProgress.syncCode = syncCode;
         userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
         saveProgress(false);
         
         updateSyncUI();
-        showToast('تم إنشاء وتفعيل كود المزامنة السحابية بنجاح! ☁️🎉');
+        showToast(`تم إنشاء وتفعيل كود المزامنة (${syncCode}) بنجاح! ☁️🎉`);
     } catch (err) {
         console.error("Cloud Sync creation failed:", err);
         alert(`فشل إنشاء كود المزامنة: ${err.message || err}`);
@@ -279,37 +263,44 @@ async function createCloudSyncAccount() {
 
 async function linkCloudSyncAccount(code) {
     if (!code || !code.trim()) {
-        alert("يرجى إدخال كود المزامنة أولاً.");
+        alert("يرجى إدخال كود المزامنة (الـ 6 أرقام) أولاً.");
         return;
     }
     const cleanCode = code.trim();
+    const topic = `qudurat_sync_${cleanCode}`;
     try {
         showToast('جاري الاتصال بالسحابة وجلب بيانات الجهاز الآخر...', 'fa-spinner fa-spin');
+        const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
         
-        let cloudData = null;
-        try {
-            const res = await fetch(`/api/sync?code=${cleanCode}`);
-            if (res.ok) {
-                const json = await res.json();
-                if (json && json.data) cloudData = json.data;
-            }
-        } catch (e) {}
-
-        if (!cloudData) {
-            const resDirect = await fetch(`https://jsonblob.com/api/jsonBlob/${cleanCode}`);
-            if (resDirect.ok) {
-                cloudData = await resDirect.json();
-            }
-        }
-        
-        if (!cloudData) {
-            alert("كود المزامنة غير صحيح أو منتهي الصلاحية.");
+        if (!res.ok) {
+            alert("كود المزامنة غير صحيح أو تعذر الاتصال بالسحابة.");
             return;
         }
         
-        const cloudProgress = cloudData.progress || cloudData;
+        const text = await res.text();
+        if (!text.trim()) {
+            alert("لم يتم العثور على بيانات سحابية مرتبطة بهذا الكود.");
+            return;
+        }
+        
+        const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
+        if (lines.length === 0) {
+            alert("لم يتم العثور على بيانات سحابية مرتبطة بهذا الكود.");
+            return;
+        }
+        
+        const lastLine = lines[lines.length - 1];
+        const msgObj = JSON.parse(lastLine);
+        if (!msgObj || !msgObj.message) {
+            alert("صيغة البيانات السحابية غير صالحة.");
+            return;
+        }
+        
+        const cloudPayload = JSON.parse(msgObj.message);
+        const cloudProgress = cloudPayload.progress || cloudPayload;
+        
         if (cloudProgress) {
-            userProgress.completed = { ...userProgress.completed, ...cloudProgress.completed };
+            userProgress.completed = { ...userProgress.completed, ...(cloudProgress.completed || {}) };
             
             const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
             (cloudProgress.incorrectQuestions || []).forEach(q => {
@@ -343,25 +334,12 @@ async function linkCloudSyncAccount(code) {
 
 async function syncProgressToCloud() {
     if (!userProgress.syncCode) return;
+    const topic = `qudurat_sync_${userProgress.syncCode}`;
     try {
-        const payload = { syncCode: userProgress.syncCode, progress: userProgress };
-        let synced = false;
-        try {
-            const res = await fetch('/api/sync', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (res.ok) synced = true;
-        } catch (e) {}
-
-        if (!synced) {
-            await fetch(`https://jsonblob.com/api/jsonBlob/${userProgress.syncCode}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ progress: userProgress, updated_at: new Date().toISOString() })
-            });
-        }
+        await fetch(`https://ntfy.sh/${topic}`, {
+            method: 'POST',
+            body: JSON.stringify({ progress: userProgress, updated_at: new Date().toISOString() })
+        });
         userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
         updateSyncUI();
     } catch (e) {
@@ -371,33 +349,42 @@ async function syncProgressToCloud() {
 
 async function fetchProgressFromCloud(code, silent = false) {
     if (!code) return;
+    const topic = `qudurat_sync_${code}`;
     try {
-        const res = await fetch(`https://jsonblob.com/api/jsonBlob/${code}`, {
-            headers: { 'Accept': 'application/json' }
-        });
+        const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
         if (res.ok) {
-            const data = await res.json();
-            if (data && data.progress) {
-                const cloudProgress = data.progress;
-                userProgress.completed = { ...userProgress.completed, ...cloudProgress.completed };
-                
-                const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
-                (cloudProgress.incorrectQuestions || []).forEach(q => {
-                    if (!existingMistakeTitles.has(q.title)) {
-                        userProgress.incorrectQuestions.push(q);
+            const text = await res.text();
+            if (text.trim()) {
+                const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
+                if (lines.length > 0) {
+                    const msgObj = JSON.parse(lines[lines.length - 1]);
+                    if (msgObj && msgObj.message) {
+                        const cloudPayload = JSON.parse(msgObj.message);
+                        const cloudProgress = cloudPayload.progress || cloudPayload;
+                        
+                        if (cloudProgress) {
+                            userProgress.completed = { ...userProgress.completed, ...(cloudProgress.completed || {}) };
+                            
+                            const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
+                            (cloudProgress.incorrectQuestions || []).forEach(q => {
+                                if (!existingMistakeTitles.has(q.title)) {
+                                    userProgress.incorrectQuestions.push(q);
+                                }
+                            });
+                            
+                            if (cloudProgress.studyBookmark) {
+                                userProgress.studyBookmark = cloudProgress.studyBookmark;
+                            }
+                            
+                            saveProgress(false);
+                            updateStatsDashboard();
+                            updateBookmarkUI();
+                            updateSyncUI();
+                            renderModelsList(quizzesData);
+                            if (!silent) showToast('تم تحديث البيانات من السحابة بنجاح! 🔄');
+                        }
                     }
-                });
-                
-                if (cloudProgress.studyBookmark) {
-                    userProgress.studyBookmark = cloudProgress.studyBookmark;
                 }
-                
-                saveProgress(false);
-                updateStatsDashboard();
-                updateBookmarkUI();
-                updateSyncUI();
-                renderModelsList(quizzesData);
-                if (!silent) showToast('تم تحديث البيانات من السحابة بنجاح! 🔄');
             }
         }
     } catch (e) {
