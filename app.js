@@ -361,8 +361,8 @@ function renderPDFBook(data, filterText = '') {
     container.innerHTML = '';
     
     const keys = Object.keys(data).sort((a, b) => {
-        const aNum = parseInt(a.replace(/[^0-9]/g, '')) || 0;
-        const bNum = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+        const aNum = parseInt(a.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt(b.split(':')[0].replace(/[^0-9]/g, '')) || 0;
         return aNum - bNum;
     });
     
@@ -426,8 +426,8 @@ function loadMorePDFPagesBatch(batchSize = 10) {
     if (!container) return;
     
     const keys = Object.keys(data).sort((a, b) => {
-        const aNum = parseInt(a.replace(/[^0-9]/g, '')) || 0;
-        const bNum = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+        const aNum = parseInt(a.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt(b.split(':')[0].replace(/[^0-9]/g, '')) || 0;
         return aNum - bNum;
     });
     
@@ -567,8 +567,8 @@ function forceRenderUpToKey(targetCleanKey, callback) {
     }
     
     const keys = Object.keys(data).sort((a, b) => {
-        const aNum = parseInt(a.replace(/[^0-9]/g, '')) || 0;
-        const bNum = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+        const aNum = parseInt(a.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt(b.split(':')[0].replace(/[^0-9]/g, '')) || 0;
         return aNum - bNum;
     });
     
