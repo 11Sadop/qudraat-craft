@@ -50,6 +50,12 @@ let userProgress = {
     theme: 'dark'
 };
 
+// Auto-detect API URL: always use production Vercel endpoint
+function getApiUrl(action) {
+    const PROD_API = 'https://qudraat-craft.vercel.app/api/auth';
+    return `${PROD_API}?action=${action}`;
+}
+
 // Initialize App
 document.addEventListener('DOMContentLoaded', () => {
     loadTheme();
@@ -289,7 +295,7 @@ async function handleLoginSubmit(e) {
     try {
         showToast('جاري تسجيل الدخول وجلب بيانات الحساب...', 'fa-spinner fa-spin');
 
-        const res = await fetch('/api/auth?action=login', {
+        const res = await fetch(getApiUrl('login'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
@@ -378,7 +384,7 @@ async function handleRegisterSubmit(e) {
     try {
         showToast('جاري إنشاء الحساب وحفظ بياناتك سحابياً...', 'fa-spinner fa-spin');
 
-        const res = await fetch('/api/auth?action=register', {
+        const res = await fetch(getApiUrl('register'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password, progress: userProgress })
@@ -416,7 +422,7 @@ async function handleRegisterSubmit(e) {
 async function syncUserProgressToCloud() {
     if (!userProgress.account || !userProgress.account.username || !userProgress.account.password) return;
     try {
-        await fetch('/api/auth?action=save_progress', {
+        await fetch(getApiUrl('save_progress'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
