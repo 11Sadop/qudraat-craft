@@ -92,17 +92,17 @@ function loadProgress() {
     
     updateStatsDashboard();
     updateBookmarkUI();
-    updateSyncUI();
+    updateAuthUI();
     
-    if (userProgress.syncCode) {
-        fetchProgressFromCloud(userProgress.syncCode, true);
+    if (userProgress.account && userProgress.account.username) {
+        syncUserProgressToCloud();
     }
 }
 
 function saveProgress(syncCloud = true) {
     localStorage.setItem('qudurat_progress', JSON.stringify(userProgress));
-    if (syncCloud && userProgress.syncCode) {
-        syncProgressToCloud();
+    if (syncCloud) {
+        syncUserProgressToCloud();
     }
 }
 
@@ -227,73 +227,69 @@ function updateBookmarkUI() {
 }
 
 // Cloud Sync Functions via ntfy.sh (100% CORS-friendly & Instant Cross-Device Sync)
-function generate6DigitPin() {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+// ============================================================
+// USER AUTHENTICATION & CLOUD DATA PERSISTENCE
+// ============================================================
+
+function updateAuthUI() {
+    const authBtnText = document.getElementById('auth-btn-text');
+    const authBtn = document.getElementById('auth-btn');
+    const loggedInView = document.getElementById('auth-logged-in-view');
+    const loggedOutView = document.getElementById('auth-logged-out-view');
+    const loggedUsernameDisplay = document.getElementById('logged-username-display');
+
+    if (userProgress.account && userProgress.account.username) {
+        const uname = userProgress.account.username;
+        if (authBtnText) authBtnText.innerText = uname;
+        if (authBtn) {
+            authBtn.style.background = 'rgba(16, 185, 129, 0.15)';
+            authBtn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+            authBtn.style.color = '#10b981';
+            authBtn.innerHTML = `<i class="fa-solid fa-user-check"></i> <span>${uname}</span>`;
+        }
+        if (loggedInView) loggedInView.style.display = 'flex';
+        if (loggedOutView) loggedOutView.style.display = 'none';
+        if (loggedUsernameDisplay) loggedUsernameDisplay.innerText = uname;
+    } else {
+        if (authBtnText) authBtnText.innerText = 'تسجيل الدخول / حساب';
+        if (authBtn) {
+            authBtn.style.background = '';
+            authBtn.style.borderColor = '';
+            authBtn.style.color = '';
+            authBtn.innerHTML = `<i class="fa-solid fa-user-gear"></i> <span>تسجيل الدخول / حساب</span>`;
+        }
+        if (loggedInView) loggedInView.style.display = 'none';
+        if (loggedOutView) loggedOutView.style.display = 'block';
+    }
 }
 
-async function createCloudSyncAccount() {
+async function handleLoginSubmit(e) {
+    if (e) e.preventDefault();
+    const usernameInput = document.getElementById('login-username');
+    const passwordInput = document.getElementById('login-password');
+    const errorBanner = document.getElementById('auth-error-banner');
+
+    if (!usernameInput || !passwordInput) return;
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+
+    if (errorBanner) errorBanner.style.display = 'none';
+
     try {
-        showToast('جاري إنشاء كود المزامنة السحابية...', 'fa-spinner fa-spin');
-        const reqData = {
-            progress: userProgress,
-            created_at: new Date().toISOString()
-        };
-        
-        let syncCode = null;
+        showToast('جاري تسجيل الدخول وجلب بيانات الحساب...', 'fa-spinner fa-spin');
+        let data = null;
         try {
-            const res = await fetch('/api/sync', {
+            const res = await fetch('/api/auth?action=login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(reqData)
+                body: JSON.stringify({ username, password })
             });
-            if (res.ok) {
-                const json = await res.json();
-                if (json && json.syncCode) syncCode = json.syncCode;
-            }
+            if (res.ok) data = await res.json();
         } catch (e) {}
 
-        if (!syncCode) {
-            syncCode = generate6DigitPin();
-            await fetch(`https://ntfy.sh/qudurat_sync_${syncCode}`, {
-                method: 'POST',
-                body: JSON.stringify(reqData)
-            });
-        }
-
-        if (!syncCode) throw new Error("تعذر إنشاء كود المزامنة");
-
-        userProgress.syncCode = syncCode;
-        userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
-        saveProgress(false);
-        
-        updateSyncUI();
-        showToast(`تم إنشاء وتفعيل كود المزامنة (${syncCode}) بنجاح! ☁️🎉`);
-    } catch (err) {
-        console.error("Cloud Sync creation failed:", err);
-        alert(`فشل إنشاء كود المزامنة: ${err.message || err}`);
-    }
-}
-
-async function linkCloudSyncAccount(code) {
-    if (!code || !code.trim()) {
-        alert("يرجى إدخال كود المزامنة (الـ 6 أرقام) أولاً.");
-        return;
-    }
-    const cleanCode = code.trim();
-    try {
-        showToast('جاري الاتصال بالسحابة وجلب بيانات الجهاز الآخر...', 'fa-spinner fa-spin');
-        
-        let cloudPayload = null;
-        try {
-            const res = await fetch(`/api/sync?code=${cleanCode}`);
-            if (res.ok) {
-                const json = await res.json();
-                if (json && json.data) cloudPayload = json.data;
-            }
-        } catch (e) {}
-
-        if (!cloudPayload) {
-            const topic = `qudurat_sync_${cleanCode}`;
+        // Fallback for localhost testing
+        if (!data) {
+            const topic = `qudurat_user_${username.toLowerCase()}`;
             const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
             if (res.ok) {
                 const text = await res.text();
@@ -305,137 +301,145 @@ async function linkCloudSyncAccount(code) {
 
                     if (messageEvents.length > 0) {
                         const lastMsgObj = messageEvents[messageEvents.length - 1];
-                        cloudPayload = JSON.parse(lastMsgObj.message);
+                        const userData = JSON.parse(lastMsgObj.message);
+                        if (userData.password === password) {
+                            data = { success: true, user: { username }, progress: userData.progress };
+                        } else {
+                            data = { error: 'كلمة المرور غير صحيحة' };
+                        }
                     }
                 }
             }
         }
 
-        if (!cloudPayload) {
-            alert("لم يتم العثور على بيانات سحابية مرتبطة بهذا الكود بعد. يرجى الضغط على 'إنشاء كود مزامنة جديد' من الجهاز الأول أولاً.");
+        if (!data || data.error) {
+            if (errorBanner) {
+                errorBanner.innerText = (data && data.error) || 'اسم المستخدم غير موجود أو تعذر الاتصال بالسحابة.';
+                errorBanner.style.display = 'block';
+            }
             return;
         }
 
-        const cloudProgress = cloudPayload.progress || cloudPayload;
-        
-        if (cloudProgress) {
-            userProgress.completed = { ...userProgress.completed, ...(cloudProgress.completed || {}) };
+        userProgress.account = { username, password };
+        if (data.progress) {
+            userProgress.completed = { ...userProgress.completed, ...(data.progress.completed || {}) };
             
             const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
-            (cloudProgress.incorrectQuestions || []).forEach(q => {
+            (data.progress.incorrectQuestions || []).forEach(q => {
                 if (!existingMistakeTitles.has(q.title)) {
                     userProgress.incorrectQuestions.push(q);
                 }
             });
-            
-            if (cloudProgress.studyBookmark) {
-                userProgress.studyBookmark = cloudProgress.studyBookmark;
+
+            if (data.progress.studyBookmark) {
+                userProgress.studyBookmark = data.progress.studyBookmark;
             }
-            
-            userProgress.syncCode = cleanCode;
-            userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
-            saveProgress(false);
-            
-            updateStatsDashboard();
-            updateBookmarkUI();
-            updateSyncUI();
-            renderModelsList(quizzesData);
-            
-            showToast('تم ربط الجهاز ومزامنة كامل البيانات بنجاح! 📱💻✨');
-            const accountModal = document.getElementById('account-modal');
-            if (accountModal) accountModal.classList.remove('active');
         }
+
+        saveProgress(false);
+        updateStatsDashboard();
+        updateBookmarkUI();
+        updateAuthUI();
+        renderModelsList(quizzesData);
+
+        showToast(`مرحباً بك (${username})! تم تسجيل الدخول واسترجاع بياناتك بنجاح 🎉✨`);
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.classList.remove('active');
+
     } catch (err) {
-        console.error("Cloud link failed:", err);
-        alert("تعذر الاتصال بالسحابة لربط الجهاز. حاول لاحقاً.");
+        console.error("Login Error:", err);
+        if (errorBanner) {
+            errorBanner.innerText = 'حدث خطأ أثناء الاتصال بالحساب. حاول لاحقاً.';
+            errorBanner.style.display = 'block';
+        }
     }
 }
 
-async function syncProgressToCloud() {
-    if (!userProgress.syncCode) return;
+async function handleRegisterSubmit(e) {
+    if (e) e.preventDefault();
+    const usernameInput = document.getElementById('register-username');
+    const passwordInput = document.getElementById('register-password');
+    const confirmInput = document.getElementById('register-confirm-password');
+    const errorBanner = document.getElementById('auth-error-banner');
+
+    if (!usernameInput || !passwordInput || !confirmInput) return;
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value;
+    const confirmPassword = confirmInput.value;
+
+    if (errorBanner) errorBanner.style.display = 'none';
+
+    if (password !== confirmPassword) {
+        if (errorBanner) {
+            errorBanner.innerText = 'كلمتا المرور غير متطابقتين!';
+            errorBanner.style.display = 'block';
+        }
+        return;
+    }
+
     try {
-        const payload = { syncCode: userProgress.syncCode, progress: userProgress };
-        let synced = false;
+        showToast('جاري إنشاء الحساب وحفظ بياناتك سحابياً...', 'fa-spinner fa-spin');
+        let data = null;
         try {
-            const res = await fetch('/api/sync', {
-                method: 'PUT',
+            const res = await fetch('/api/auth?action=register', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ username, password, progress: userProgress })
             });
-            if (res.ok) synced = true;
+            if (res.ok) data = await res.json();
         } catch (e) {}
 
-        if (!synced) {
-            const topic = `qudurat_sync_${userProgress.syncCode}`;
+        // Fallback for localhost testing
+        if (!data) {
+            const topic = `qudurat_user_${username.toLowerCase()}`;
+            const userData = { username, password, progress: userProgress, created_at: new Date().toISOString() };
             await fetch(`https://ntfy.sh/${topic}`, {
                 method: 'POST',
-                body: JSON.stringify({ progress: userProgress, updated_at: new Date().toISOString() })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
             });
+            data = { success: true, user: { username }, progress: userProgress };
         }
-        userProgress.lastSyncedAt = new Date().toLocaleString('ar-SA');
-        updateSyncUI();
-    } catch (e) {
-        console.warn("Auto sync failed:", e);
+
+        if (!data || data.error) {
+            if (errorBanner) {
+                errorBanner.innerText = (data && data.error) || 'فشل إنشاء الحساب.';
+                errorBanner.style.display = 'block';
+            }
+            return;
+        }
+
+        userProgress.account = { username, password };
+        saveProgress(false);
+        updateAuthUI();
+
+        showToast(`تم إنشاء حسابك (${username}) وحفظ كامل تقدمك بنجاح! 🎉✨`);
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) authModal.classList.remove('active');
+
+    } catch (err) {
+        console.error("Register Error:", err);
+        if (errorBanner) {
+            errorBanner.innerText = 'حدث خطأ أثناء إنشاء الحساب. حاول لاحقاً.';
+            errorBanner.style.display = 'block';
+        }
     }
 }
 
-async function fetchProgressFromCloud(code, silent = false) {
-    if (!code) return;
+async function syncUserProgressToCloud() {
+    if (!userProgress.account || !userProgress.account.username || !userProgress.account.password) return;
     try {
-        let cloudPayload = null;
-        try {
-            const res = await fetch(`/api/sync?code=${code}`);
-            if (res.ok) {
-                const json = await res.json();
-                if (json && json.data) cloudPayload = json.data;
-            }
-        } catch (e) {}
-
-        if (!cloudPayload) {
-            const topic = `qudurat_sync_${code}`;
-            const res = await fetch(`https://ntfy.sh/${topic}/json?poll=1`);
-            if (res.ok) {
-                const text = await res.text();
-                if (text.trim()) {
-                    const lines = text.trim().split('\n').filter(l => l.trim().length > 0);
-                    const messageEvents = lines
-                        .map(l => { try { return JSON.parse(l); } catch(e) { return null; } })
-                        .filter(obj => obj && obj.event === 'message' && obj.message);
-
-                    if (messageEvents.length > 0) {
-                        const lastMsgObj = messageEvents[messageEvents.length - 1];
-                        cloudPayload = JSON.parse(lastMsgObj.message);
-                    }
-                }
-            }
-        }
-
-        if (cloudPayload) {
-            const cloudProgress = cloudPayload.progress || cloudPayload;
-            if (cloudProgress) {
-                userProgress.completed = { ...userProgress.completed, ...(cloudProgress.completed || {}) };
-                
-                const existingMistakeTitles = new Set((userProgress.incorrectQuestions || []).map(q => q.title));
-                (cloudProgress.incorrectQuestions || []).forEach(q => {
-                    if (!existingMistakeTitles.has(q.title)) {
-                        userProgress.incorrectQuestions.push(q);
-                    }
-                });
-                
-                if (cloudProgress.studyBookmark) {
-                    userProgress.studyBookmark = cloudProgress.studyBookmark;
-                }
-                
-                saveProgress(false);
-                updateStatsDashboard();
-                updateBookmarkUI();
-                updateSyncUI();
-                renderModelsList(quizzesData);
-                if (!silent) showToast('تم تحديث البيانات من السحابة بنجاح! 🔄');
-            }
-        }
+        await fetch('/api/auth?action=save_progress', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: userProgress.account.username,
+                password: userProgress.account.password,
+                progress: userProgress
+            })
+        });
     } catch (e) {
-        console.warn("Silent cloud fetch failed:", e);
+        console.warn("Cloud save progress failed:", e);
     }
 }
 
@@ -1054,62 +1058,78 @@ function updateJumpSelectorOnScroll() {
 
 // Event Handlers Setup
 function setupEventHandlers() {
-    // Account & Cloud Sync Modal handlers
-    const syncBtn = document.getElementById('sync-btn');
-    const accountModal = document.getElementById('account-modal');
-    const accountClose = document.getElementById('account-modal-close');
-    const accountDone = document.getElementById('account-modal-done');
+    // User Auth Modal Handlers
+    const authBtn = document.getElementById('auth-btn');
+    const authModal = document.getElementById('auth-modal');
+    const authClose = document.getElementById('auth-modal-close');
+    const authCloseLogged = document.getElementById('auth-modal-close-logged');
     
-    if (syncBtn && accountModal) {
-        syncBtn.addEventListener('click', () => {
-            updateSyncUI();
-            accountModal.classList.add('active');
+    if (authBtn && authModal) {
+        authBtn.addEventListener('click', () => {
+            updateAuthUI();
+            authModal.classList.add('active');
         });
     }
-    if (accountClose && accountModal) {
-        accountClose.addEventListener('click', () => {
-            accountModal.classList.remove('active');
+    if (authClose && authModal) {
+        authClose.addEventListener('click', () => {
+            authModal.classList.remove('active');
         });
     }
-    if (accountDone && accountModal) {
-        accountDone.addEventListener('click', () => {
-            accountModal.classList.remove('active');
+    if (authCloseLogged && authModal) {
+        authCloseLogged.addEventListener('click', () => {
+            authModal.classList.remove('active');
         });
     }
-    
-    // Sync Actions
-    const btnCreateSync = document.getElementById('btn-create-sync');
-    if (btnCreateSync) {
-        btnCreateSync.addEventListener('click', createCloudSyncAccount);
-    }
-    
-    const btnManualSync = document.getElementById('btn-manual-sync');
-    if (btnManualSync) {
-        btnManualSync.addEventListener('click', () => {
-            if (userProgress.syncCode) {
-                fetchProgressFromCloud(userProgress.syncCode);
-            } else {
-                alert('لم يتم إنشاء أو ربط كود مزامنة بعد. اضغط على "إنشاء كود مزامنة جديد" أولاً.');
-            }
+
+    // Tab Toggling
+    const tabLogin = document.getElementById('auth-tab-login');
+    const tabRegister = document.getElementById('auth-tab-register');
+    const formLogin = document.getElementById('auth-form-login');
+    const formRegister = document.getElementById('auth-form-register');
+    const errorBanner = document.getElementById('auth-error-banner');
+
+    if (tabLogin && tabRegister && formLogin && formRegister) {
+        tabLogin.addEventListener('click', (e) => {
+            e.preventDefault();
+            tabLogin.classList.add('active');
+            tabLogin.style.background = '';
+            tabLogin.style.color = '';
+            tabRegister.classList.remove('active');
+            tabRegister.style.background = 'transparent';
+            tabRegister.style.color = 'var(--text-secondary)';
+            formLogin.style.display = 'flex';
+            formRegister.style.display = 'none';
+            if (errorBanner) errorBanner.style.display = 'none';
+        });
+
+        tabRegister.addEventListener('click', (e) => {
+            e.preventDefault();
+            tabRegister.classList.add('active');
+            tabRegister.style.background = '';
+            tabRegister.style.color = '';
+            tabLogin.classList.remove('active');
+            tabLogin.style.background = 'transparent';
+            tabLogin.style.color = 'var(--text-secondary)';
+            formRegister.style.display = 'flex';
+            formLogin.style.display = 'none';
+            if (errorBanner) errorBanner.style.display = 'none';
         });
     }
-    
-    const btnLinkSync = document.getElementById('btn-link-sync');
-    const syncInputCode = document.getElementById('sync-input-code');
-    if (btnLinkSync && syncInputCode) {
-        btnLinkSync.addEventListener('click', () => {
-            linkCloudSyncAccount(syncInputCode.value);
+
+    // Forms Submissions
+    if (formLogin) formLogin.addEventListener('submit', handleLoginSubmit);
+    if (formRegister) formRegister.addEventListener('submit', handleRegisterSubmit);
+
+    // Logout
+    const btnLogoutAccount = document.getElementById('btn-logout-account');
+    if (btnLogoutAccount) {
+        btnLogoutAccount.addEventListener('click', () => {
+            userProgress.account = null;
+            saveProgress(false);
+            updateAuthUI();
+            showToast('تم تسجيل الخروج بنجاح.');
+            if (authModal) authModal.classList.remove('active');
         });
-    }
-    
-    const btnExportJson = document.getElementById('btn-export-json');
-    if (btnExportJson) {
-        btnExportJson.addEventListener('click', exportProgressToFile);
-    }
-    
-    const importFileInput = document.getElementById('import-file-input');
-    if (importFileInput) {
-        importFileInput.addEventListener('change', importProgressFromFile);
     }
     
     // Bookmark controls
