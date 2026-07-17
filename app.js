@@ -192,22 +192,34 @@ function goToBookBookmark() {
     }
     const { cleanKey, numPart, title } = userProgress.studyBookmark;
     const targetId = `pdf-page-${cleanKey}`;
-    let element = document.getElementById(targetId);
     
+    // Step 1: Always switch to the book tab first
+    const tabBook = document.getElementById('tab-book');
+    const bookContent = document.getElementById('book-content');
+    if (tabBook && !tabBook.classList.contains('active')) {
+        resetTabStyles();
+        tabBook.classList.add('active');
+        tabBook.style.background = 'rgba(139, 92, 246, 0.15)';
+        tabBook.style.color = 'var(--accent-color)';
+        if (bookContent) bookContent.style.display = 'flex';
+    }
+    
+    // Step 2: Scroll to bookmark (render if needed)
+    const doScroll = () => {
+        const el = document.getElementById(targetId);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            el.style.outline = '4px solid #f59e0b';
+            setTimeout(() => { el.style.outline = 'none'; }, 2500);
+        }
+    };
+    
+    let element = document.getElementById(targetId);
     if (!element) {
         showToast('جاري تحميل وتجهيز النموذج لعلامة التوقف...', 'fa-spinner fa-spin');
-        forceRenderUpToKey(cleanKey, () => {
-            const el = document.getElementById(targetId);
-            if (el) {
-                el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                el.style.outline = '4px solid #f59e0b';
-                setTimeout(() => { el.style.outline = 'none'; }, 2500);
-            }
-        });
+        forceRenderUpToKey(cleanKey, doScroll);
     } else {
-        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        element.style.outline = '4px solid #f59e0b';
-        setTimeout(() => { element.style.outline = 'none'; }, 2500);
+        doScroll();
     }
 }
 
@@ -999,18 +1011,19 @@ function forceRenderUpToKey(targetCleanKey, callback) {
     
     showBookLoader();
     
+    // Use requestAnimationFrame for smooth non-blocking rendering
     function renderChunk() {
         let currentCount = container.querySelectorAll('.pdf-page').length;
         if (currentCount <= targetIdx) {
-            // Render next batch of 10 pages
-            loadMorePDFPagesBatch(10);
-            setTimeout(renderChunk, 5); // Yield control to the browser thread
+            // Render a larger batch per frame for speed
+            loadMorePDFPagesBatch(20);
+            requestAnimationFrame(renderChunk); // Yield control to browser between frames
         } else {
             hideBookLoader();
             if (callback) callback();
         }
     }
-    renderChunk();
+    requestAnimationFrame(renderChunk);
 }
 
 // Scroll listener to load more pages dynamically
@@ -1339,19 +1352,21 @@ function setupEventHandlers() {
         bookJumpSelector.addEventListener('change', (e) => {
             const cleanKey = e.target.value;
             const targetId = `pdf-page-${cleanKey}`;
-            let element = document.getElementById(targetId);
-            if (!element) {
-                // Not rendered in DOM yet because of lazy loading - force render up to this key
-                forceRenderUpToKey(cleanKey);
-                element = document.getElementById(targetId);
-            }
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                // Highlight the page momentarily to draw attention
-                element.style.outline = '3px solid var(--accent-color)';
-                setTimeout(() => {
-                    element.style.outline = 'none';
-                }, 1500);
+            
+            const doScroll = () => {
+                const element = document.getElementById(targetId);
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    element.style.outline = '3px solid var(--accent-color)';
+                    setTimeout(() => { element.style.outline = 'none'; }, 1500);
+                }
+            };
+            
+            if (!document.getElementById(targetId)) {
+                // Not rendered yet — force render up to this section first, THEN scroll
+                forceRenderUpToKey(cleanKey, doScroll);
+            } else {
+                doScroll();
             }
         });
     }
