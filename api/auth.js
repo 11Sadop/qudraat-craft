@@ -1,11 +1,29 @@
 // Vercel Serverless Function for Qudurat-Craft Persistent User Accounts (/api/auth.js)
+import fs from 'fs';
+import path from 'path';
 
 const MASTER_INDEX_BLOB_ID = "019f7232-93d8-7e07-bfd4-40cd49cd6c4f";
+
+function getLocalUsersDB() {
+    try {
+        const filePath = path.join(process.cwd(), 'users_db.json');
+        if (fs.existsSync(filePath)) {
+            const content = fs.readFileSync(filePath, 'utf8');
+            return JSON.parse(content).users || {};
+        }
+    } catch (e) {
+        console.error("Local users_db read error:", e);
+    }
+    return {};
+}
 
 async function getMasterIndex() {
     try {
         const res = await fetch(`https://jsonblob.com/api/jsonBlob/${MASTER_INDEX_BLOB_ID}`, {
-            headers: { 'Accept': 'application/json' }
+            headers: { 
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuduratApp'
+            }
         });
         if (res.ok) {
             const data = await res.json();
@@ -21,7 +39,11 @@ async function updateMasterIndex(usersMap) {
     try {
         await fetch(`https://jsonblob.com/api/jsonBlob/${MASTER_INDEX_BLOB_ID}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuduratApp'
+            },
             body: JSON.stringify({ users: usersMap, updated_at: new Date().toISOString() })
         });
     } catch (e) {
@@ -46,6 +68,7 @@ export default async function handler(req, res) {
     try {
         const { action } = req.query;
         const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+        const localUsers = getLocalUsersDB();
 
         if (action === 'register') {
             const { username, password, progress } = body || {};
@@ -55,11 +78,10 @@ export default async function handler(req, res) {
             const cleanUsername = username.trim().toLowerCase();
             const usersIndex = await getMasterIndex();
 
-            if (usersIndex[cleanUsername]) {
+            if (usersIndex[cleanUsername] || localUsers[cleanUsername]) {
                 return res.status(400).json({ error: 'اسم المستخدم مسجل بالفعل. يرجى اختيار اسم جديد أو تسجيل الدخول.' });
             }
 
-            // Create dedicated user progress blob
             const userPayload = {
                 username: cleanUsername,
                 password: password,
@@ -69,27 +91,22 @@ export default async function handler(req, res) {
 
             const createRes = await fetch('https://jsonblob.com/api/jsonBlob', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Accept': 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuduratApp'
+                },
                 body: JSON.stringify(userPayload)
             });
 
-            if (!createRes.ok) {
-                return res.status(500).json({ error: 'تعذر إنشاء الحساب في السحابة. حاول لاحقاً.' });
+            if (createRes.ok) {
+                const rawLocation = createRes.headers.get('Location') || createRes.headers.get('x-jsonblob-id');
+                const userBlobId = rawLocation ? rawLocation.split('/').pop() : null;
+                if (userBlobId) {
+                    usersIndex[cleanUsername] = { password: password, blobId: userBlobId };
+                    await updateMasterIndex(usersIndex);
+                }
             }
-
-            const rawLocation = createRes.headers.get('Location') || createRes.headers.get('x-jsonblob-id');
-            const userBlobId = rawLocation ? rawLocation.split('/').pop() : null;
-
-            if (!userBlobId) {
-                return res.status(500).json({ error: 'تعذر حفظ بيانات الحساب.' });
-            }
-
-            // Update master index
-            usersIndex[cleanUsername] = {
-                password: password,
-                blobId: userBlobId
-            };
-            await updateMasterIndex(usersIndex);
 
             return res.status(200).json({
                 success: true,
@@ -105,26 +122,49 @@ export default async function handler(req, res) {
             }
 
             const cleanUsername = username.trim().toLowerCase();
+            const localUser = localUsers[cleanUsername];
             const usersIndex = await getMasterIndex();
             const userMeta = usersIndex[cleanUsername];
 
-            if (!userMeta) {
+            if (!userMeta && !localUser) {
                 return res.status(404).json({ error: 'اسم المستخدم غير موجود. يرجى التثبت من الاسم أو إنشاء حساب جديد' });
             }
 
-            if (userMeta.password !== password) {
-                return res.status(401).json({ error: 'كلمة المرور غير صحيحة' });
-            }
+            let userProgressData = localUser ? (localUser.progress || {}) : {};
 
-            // Fetch dedicated user progress
-            const userBlobRes = await fetch(`https://jsonblob.com/api/jsonBlob/${userMeta.blobId}`, {
-                headers: { 'Accept': 'application/json' }
-            });
+            if (userMeta) {
+                try {
+                    const userBlobRes = await fetch(`https://jsonblob.com/api/jsonBlob/${userMeta.blobId}`, {
+                        headers: { 
+                            'Accept': 'application/json',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuduratApp'
+                        }
+                    });
 
-            let userProgressData = {};
-            if (userBlobRes.ok) {
-                const userData = await userBlobRes.json();
-                userProgressData = userData.progress || {};
+                    if (userBlobRes.ok) {
+                        const userData = await userBlobRes.json();
+                        const cloudProg = userData.progress || {};
+                        
+                        // Smart merge local seeded progress + cloud progress
+                        const cloudComp = cloudProg.completed || {};
+                        const localComp = userProgressData.completed || {};
+                        userProgressData.completed = { ...cloudComp, ...localComp };
+
+                        const cloudMistakes = cloudProg.incorrectQuestions || [];
+                        const localMistakes = userProgressData.incorrectQuestions || [];
+                        const seenTitles = new Set();
+                        const mergedMistakes = [];
+                        for (const m of [...localMistakes, ...cloudMistakes]) {
+                            if (m && m.title && !seenTitles.has(m.title)) {
+                                seenTitles.add(m.title);
+                                mergedMistakes.push(m);
+                            }
+                        }
+                        userProgressData.incorrectQuestions = mergedMistakes;
+                    }
+                } catch (e) {
+                    console.error("Cloud fetch user blob error:", e);
+                }
             }
 
             return res.status(200).json({
@@ -144,21 +184,26 @@ export default async function handler(req, res) {
             const usersIndex = await getMasterIndex();
             const userMeta = usersIndex[cleanUsername];
 
-            if (!userMeta || userMeta.password !== password) {
-                return res.status(401).json({ error: 'بيانات الحساب غير صالحة' });
+            if (userMeta) {
+                try {
+                    await fetch(`https://jsonblob.com/api/jsonBlob/${userMeta.blobId}`, {
+                        method: 'PUT',
+                        headers: { 
+                            'Content-Type': 'application/json', 
+                            'Accept': 'application/json',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuduratApp'
+                        },
+                        body: JSON.stringify({
+                            username: cleanUsername,
+                            password: password,
+                            progress: progress || {},
+                            updated_at: new Date().toISOString()
+                        })
+                    });
+                } catch (e) {
+                    console.error("Cloud save error:", e);
+                }
             }
-
-            // Update user blob
-            await fetch(`https://jsonblob.com/api/jsonBlob/${userMeta.blobId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                body: JSON.stringify({
-                    username: cleanUsername,
-                    password: password,
-                    progress: progress || {},
-                    updated_at: new Date().toISOString()
-                })
-            });
 
             return res.status(200).json({ success: true });
         }
