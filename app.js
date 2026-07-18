@@ -102,7 +102,7 @@ function loadProgress() {
     updateAuthUI();
     
     if (userProgress.account && userProgress.account.username) {
-        syncUserProgressToCloud();
+        fetchCloudProgress(false);
     }
 }
 
@@ -241,6 +241,7 @@ function updateAuthUI() {
     const loggedInView = document.getElementById('auth-logged-in-view');
     const loggedOutView = document.getElementById('auth-logged-out-view');
     const loggedUsernameDisplay = document.getElementById('logged-username-display');
+    const syncRefreshBtn = document.getElementById('btn-sync-refresh');
 
     if (userProgress.account && userProgress.account.username) {
         const uname = userProgress.account.username;
@@ -251,6 +252,7 @@ function updateAuthUI() {
             authBtn.style.color = '#10b981';
             authBtn.innerHTML = `<i class="fa-solid fa-user-check"></i> <span>${uname}</span>`;
         }
+        if (syncRefreshBtn) syncRefreshBtn.style.display = 'inline-flex';
         if (loggedInView) loggedInView.style.display = 'flex';
         if (loggedOutView) loggedOutView.style.display = 'none';
         if (loggedUsernameDisplay) loggedUsernameDisplay.innerText = uname;
@@ -262,6 +264,7 @@ function updateAuthUI() {
             authBtn.style.color = '';
             authBtn.innerHTML = `<i class="fa-solid fa-user-gear"></i> <span>تسجيل الدخول / حساب</span>`;
         }
+        if (syncRefreshBtn) syncRefreshBtn.style.display = 'none';
         if (loggedInView) loggedInView.style.display = 'none';
         if (loggedOutView) loggedOutView.style.display = 'block';
     }
@@ -427,6 +430,74 @@ async function syncUserProgressToCloud() {
         console.warn("Cloud save progress failed:", e);
     }
 }
+
+// Fetch and apply latest progress from Cloud database
+async function fetchCloudProgress(showToastNotify = false) {
+    if (!userProgress.account || !userProgress.account.username || !userProgress.account.password) return;
+    try {
+        const refreshBtn = document.getElementById('btn-sync-refresh');
+        if (refreshBtn) {
+            const icon = refreshBtn.querySelector('i');
+            if (icon) icon.classList.add('fa-spin');
+        }
+
+        if (showToastNotify) showToast('جاري جلب أحدث بياناتك من السحابة...', 'fa-rotate-right fa-spin');
+
+        const res = await fetch(getApiUrl('login'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: userProgress.account.username,
+                password: userProgress.account.password
+            })
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.progress) {
+                // Apply cloud progress to local state
+                userProgress.completed = data.progress.completed || {};
+                userProgress.incorrectQuestions = data.progress.incorrectQuestions || [];
+                if (data.progress.studyBookmark) {
+                    userProgress.studyBookmark = data.progress.studyBookmark;
+                }
+
+                saveProgress(false); // Save locally without re-triggering cloud save
+                updateStatsDashboard();
+                updateBookmarkUI();
+                updateAuthUI();
+
+                if (typeof renderModelsList === 'function' && quizzesData && Object.keys(quizzesData).length > 0) {
+                    renderModelsList(quizzesData);
+                }
+
+                if (showToastNotify) {
+                    showToast('تمت المزامنة وجلب بياناتك الجديدة بنجاح! 🎉', 'fa-cloud-arrow-down');
+                }
+            }
+        }
+    } catch (e) {
+        console.warn("Fetch cloud progress error:", e);
+    } finally {
+        const refreshBtn = document.getElementById('btn-sync-refresh');
+        if (refreshBtn) {
+            const icon = refreshBtn.querySelector('i');
+            if (icon) icon.classList.remove('fa-spin');
+        }
+    }
+}
+
+// Auto-sync when tab/app becomes visible or focused on Mobile/PC
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && userProgress.account && userProgress.account.username) {
+        fetchCloudProgress(false);
+    }
+});
+window.addEventListener('focus', () => {
+    if (userProgress.account && userProgress.account.username) {
+        fetchCloudProgress(false);
+    }
+});
 
 function updateSyncUI() {
     const badge = document.getElementById('sync-status-badge');
@@ -1102,6 +1173,13 @@ function setupEventHandlers() {
         authBtn.addEventListener('click', () => {
             updateAuthUI();
             authModal.classList.add('active');
+        });
+    }
+
+    const btnSyncRefresh = document.getElementById('btn-sync-refresh');
+    if (btnSyncRefresh) {
+        btnSyncRefresh.addEventListener('click', () => {
+            fetchCloudProgress(true);
         });
     }
     if (authClose && authModal) {
