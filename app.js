@@ -431,7 +431,70 @@ async function syncUserProgressToCloud() {
     }
 }
 
-// Fetch and apply latest progress from Cloud database
+// Smart Merge algorithm to combine Local and Cloud progress without data loss
+function mergeProgress(localProg, cloudProg) {
+    const locComp = localProg.completed || {};
+    const cldComp = cloudProg.completed || {};
+    
+    const mergedCompleted = { ...locComp };
+    let hasNewFromLocal = false;
+
+    // Merge completed models: union of all solved models across both devices
+    for (const [k, cldVal] of Object.entries(cldComp)) {
+        const locVal = locComp[k];
+        if (!locVal) {
+            mergedCompleted[k] = cldVal;
+        } else {
+            const lScore = typeof locVal === 'object' ? (locVal.score || 0) : locVal;
+            const cScore = typeof cldVal === 'object' ? (cldVal.score || 0) : cldVal;
+            if (cScore > lScore) {
+                mergedCompleted[k] = cldVal;
+            }
+        }
+    }
+
+    // Check if local contains models that cloud does not have
+    for (const k of Object.keys(locComp)) {
+        if (!cldComp[k]) {
+            hasNewFromLocal = true;
+        }
+    }
+
+    // Merge mistake bank items by unique question title
+    const locMistakes = localProg.incorrectQuestions || [];
+    const cldMistakes = cloudProg.incorrectQuestions || [];
+    const seenTitles = new Set();
+    const mergedMistakes = [];
+
+    for (const m of [...locMistakes, ...cldMistakes]) {
+        if (m && m.title && !seenTitles.has(m.title)) {
+            seenTitles.add(m.title);
+            mergedMistakes.push(m);
+        }
+    }
+
+    if (locMistakes.length > cldMistakes.length) {
+        hasNewFromLocal = true;
+    }
+
+    // Merge study bookmark
+    let mergedBookmark = localProg.studyBookmark || cloudProg.studyBookmark || null;
+    if (cloudProg.studyBookmark && (!localProg.studyBookmark || new Date(cloudProg.studyBookmark.savedAt || 0) > new Date(localProg.studyBookmark.savedAt || 0))) {
+        mergedBookmark = cloudProg.studyBookmark;
+    }
+
+    return {
+        merged: {
+            ...localProg,
+            completed: mergedCompleted,
+            incorrectQuestions: mergedMistakes,
+            studyBookmark: mergedBookmark
+        },
+        hasNewFromLocal: hasNewFromLocal
+    };
+}
+
+// Fetch and apply latest progress from Cloud database using Smart Merge
 async function fetchCloudProgress(showToastNotify = false) {
     if (!userProgress.account || !userProgress.account.username || !userProgress.account.password) return;
     try {
@@ -455,14 +518,13 @@ async function fetchCloudProgress(showToastNotify = false) {
         if (res.ok) {
             const data = await res.json();
             if (data.success && data.progress) {
-                // Apply cloud progress to local state
-                userProgress.completed = data.progress.completed || {};
-                userProgress.incorrectQuestions = data.progress.incorrectQuestions || [];
-                if (data.progress.studyBookmark) {
-                    userProgress.studyBookmark = data.progress.studyBookmark;
-                }
+                // Perform Smart Merge between local state and cloud state
+                const { merged, hasNewFromLocal } = mergeProgress(userProgress, data.progress);
+                userProgress = merged;
 
-                saveProgress(false); // Save locally without re-triggering cloud save
+                // Save locally, and if local had higher progress than cloud, auto-push merged result back to cloud immediately!
+                saveProgress(hasNewFromLocal);
+
                 updateStatsDashboard();
                 updateBookmarkUI();
                 updateAuthUI();
