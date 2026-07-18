@@ -499,6 +499,19 @@ window.addEventListener('focus', () => {
     }
 });
 
+// Automatic Background Polling Timer for Real-Time Cross-Device Sync (Every 10 Seconds)
+let cloudAutoPollingInterval = null;
+function startCloudAutoPolling() {
+    if (cloudAutoPollingInterval) clearInterval(cloudAutoPollingInterval);
+    cloudAutoPollingInterval = setInterval(() => {
+        if (document.visibilityState === 'visible' && userProgress.account && userProgress.account.username) {
+            fetchCloudProgress(false);
+        }
+    }, 10000); // Poll every 10 seconds silently
+}
+
+startCloudAutoPolling();
+
 function updateSyncUI() {
     const badge = document.getElementById('sync-status-badge');
     const container = document.getElementById('sync-code-container');
