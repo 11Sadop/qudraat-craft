@@ -738,6 +738,39 @@ function renderMegaBundlesList() {
         return aNum - bNum;
     });
 
+    // 1. Featured 225-Model Mega Marathon Banner Card
+    const megaAllKey = 'MEGA_RANGE_0_225';
+    const megaAllTitle = '👑 ماراثون المراجعة الشاملة (جميع الـ 225 نموذج بالكامل)';
+    const megaAllCard = document.createElement('div');
+    megaAllCard.className = 'model-card';
+    megaAllCard.style.cssText = "grid-column: 1 / -1; background: linear-gradient(135deg, rgba(234, 179, 8, 0.15), rgba(139, 92, 246, 0.2), rgba(15, 23, 42, 0.95)); border: 2px solid #eab308; box-shadow: 0 12px 32px rgba(234, 179, 8, 0.2); border-radius: 18px; padding: 24px;";
+
+    const completedDataAll = userProgress.completed && userProgress.completed[megaAllKey];
+    const isSolvedAll = completedDataAll !== undefined;
+    let scoreAll = isSolvedAll && typeof completedDataAll === 'object' ? (completedDataAll.score || 0) : 0;
+
+    const solvedBadgeAll = isSolvedAll ? 
+        `<span class="model-badge" style="background: rgba(16,185,129,0.2); color: #10b981; font-weight: 800;">حل سابق: ${scoreAll}%</span>` : 
+        `<span class="model-badge" style="background: rgba(234,179,8,0.2); color: #eab308; font-weight: 800;">ماراثون شامل 👑</span>`;
+
+    megaAllCard.innerHTML = `
+        <div class="model-card-header" style="margin-bottom: 12px;">
+            <span class="model-number" style="background: linear-gradient(135deg, #eab308, #f59e0b); color: #000; padding: 6px 14px; border-radius: 10px; font-weight: 900; font-size: 14px;">👑 الماراثون التجميعي الكلي</span>
+            ${solvedBadgeAll}
+        </div>
+        <h2 class="model-card-title" style="font-size: 20px; margin: 10px 0; color: white; font-weight: 900;">${megaAllTitle}</h2>
+        <p style="font-size: 14px; color: var(--text-primary); margin-bottom: 16px; line-height: 1.7;">
+            <i class="fa-solid fa-crown" style="color: #eab308; margin-left: 6px;"></i> يجمع <strong>جميع الـ 225 نموذجاً بالكامل</strong> في اختبار مراجعة واحد شامل يحتوي على <strong>2,926 سؤالاً شاملاً</strong> مع <strong>822 نص استيعاب وقراءة</strong> دون حذف أي معلومة!
+        </p>
+        <div style="display: flex; gap: 12px;">
+            <button class="btn-primary" onclick="openModeModal('${megaAllKey}')" style="width: 100%; justify-content: center; padding: 14px; font-weight: 900; font-size: 16px; gap: 10px; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #8b5cf6); border: none; box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);">
+                <i class="fa-solid fa-bolt" style="font-size: 18px;"></i> ابدأ الماراثون الشامل (225 نموذج) 🚀
+            </button>
+        </div>
+    `;
+    container.appendChild(megaAllCard);
+
+    // 2. 32-Model Combined Bundles Cards
     const bundleSize = 32;
     const totalBundles = Math.ceil(keys.length / bundleSize);
 
@@ -1801,7 +1834,9 @@ function startQuiz() {
     userAnswers = {};
 
     let displayTitle = selectedModelName;
-    if (selectedModelName.startsWith('MEGA_RANGE_')) {
+    if (selectedModelName === 'MEGA_RANGE_0_225') {
+        displayTitle = '👑 ماراثون المراجعة الشاملة (جميع الـ 225 نموذج بالكامل)';
+    } else if (selectedModelName.startsWith('MEGA_RANGE_')) {
         const parts = selectedModelName.replace('MEGA_RANGE_', '').split('_');
         const startNum = parseInt(parts[0]) + 1;
         const endNum = parseInt(parts[0]) + parseInt(parts[1]);
@@ -2276,37 +2311,12 @@ window.removeMistake = removeMistake;
 // ============================================================
 let scrollAnswers = {}; // { qIndex: choiceText }
 
-function startScrollQuiz() {
-    const success = loadActiveQuestionsForSelection(selectedModelName);
-    if (!success || activeQuestionsList.length === 0) {
-        alert('هذا النموذج لا يحتوي على أسئلة.');
-        return;
-    }
-
-    scrollAnswers = {};
-    const total = activeQuestionsList.length;
-
-    let displayTitle = selectedModelName;
-    if (selectedModelName.startsWith('MEGA_RANGE_')) {
-        const parts = selectedModelName.replace('MEGA_RANGE_', '').split('_');
-        const startNum = parseInt(parts[0]) + 1;
-        const endNum = parseInt(parts[0]) + parseInt(parts[1]);
-        displayTitle = `🚀 التجميعية الكبرى (النماذج ${startNum} - ${endNum})`;
-    } else if (quizzesData[selectedModelName]) {
-        displayTitle = quizzesData[selectedModelName].title || selectedModelName;
-    }
-
-    // Set header info
-    document.getElementById('scroll-quiz-title').innerText = displayTitle;
-    document.getElementById('scroll-quiz-counter').innerText = `إجمالي الأسئلة: ${total}`;
-    document.getElementById('scroll-answered-badge').innerText = `أجبت: 0 / ${total}`;
-
-    // Build questions DOM
+function renderScrollChunk(startIdx, batchSize = 40) {
+    const endIdx = Math.min(startIdx + batchSize, activeQuestionsList.length);
     const container = document.getElementById('scroll-questions-container');
-    container.innerHTML = '';
 
-    activeQuestionsList.forEach((q, qIdx) => {
-        // Passage block if present (only show once per group of questions sharing the same passage)
+    for (let qIdx = startIdx; qIdx < endIdx; qIdx++) {
+        const q = activeQuestionsList[qIdx];
         const passage = passageMappings[qIdx];
         const prevPassage = qIdx > 0 ? passageMappings[qIdx - 1] : null;
         if (passage && passage !== prevPassage) {
@@ -2319,7 +2329,6 @@ function startScrollQuiz() {
             container.appendChild(passageBlock);
         }
 
-        // Question card
         const card = document.createElement('div');
         card.className = 'question-card';
         card.id = `scroll-q-${qIdx}`;
@@ -2346,22 +2355,59 @@ function startScrollQuiz() {
             btn.dataset.qidx = qIdx;
             btn.innerHTML = `<span dir="auto"><strong>${prefix}.</strong> ${choice}</span><div class="option-indicator"></div>`;
             btn.addEventListener('click', () => {
-                // Deselect others in this question
                 optionsGrid.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
                 btn.classList.add('selected');
                 card.style.borderColor = 'var(--accent-color)';
                 scrollAnswers[qIdx] = choice;
-                
-                // Update answered counter
                 const answeredCount = Object.keys(scrollAnswers).length;
-                document.getElementById('scroll-answered-badge').innerText = `أجبت: ${answeredCount} / ${total}`;
+                document.getElementById('scroll-answered-badge').innerText = `أجبت: ${answeredCount} / ${activeQuestionsList.length}`;
             });
             optionsGrid.appendChild(btn);
         });
 
         card.appendChild(optionsGrid);
         container.appendChild(card);
-    });
+    }
+
+    if (endIdx < activeQuestionsList.length) {
+        requestAnimationFrame(() => {
+            renderScrollChunk(endIdx, batchSize);
+        });
+    }
+}
+
+function startScrollQuiz() {
+    const success = loadActiveQuestionsForSelection(selectedModelName);
+    if (!success || activeQuestionsList.length === 0) {
+        alert('هذا النموذج لا يحتوي على أسئلة.');
+        return;
+    }
+
+    scrollAnswers = {};
+    const total = activeQuestionsList.length;
+
+    let displayTitle = selectedModelName;
+    if (selectedModelName === 'MEGA_RANGE_0_225') {
+        displayTitle = '👑 ماراثون المراجعة الشاملة (جميع الـ 225 نموذج بالكامل)';
+    } else if (selectedModelName.startsWith('MEGA_RANGE_')) {
+        const parts = selectedModelName.replace('MEGA_RANGE_', '').split('_');
+        const startNum = parseInt(parts[0]) + 1;
+        const endNum = parseInt(parts[0]) + parseInt(parts[1]);
+        displayTitle = `🚀 التجميعية الكبرى (النماذج ${startNum} - ${endNum})`;
+    } else if (quizzesData[selectedModelName]) {
+        displayTitle = quizzesData[selectedModelName].title || selectedModelName;
+    }
+
+    // Set header info
+    document.getElementById('scroll-quiz-title').innerText = displayTitle;
+    document.getElementById('scroll-quiz-counter').innerText = `إجمالي الأسئلة: ${total}`;
+    document.getElementById('scroll-answered-badge').innerText = `أجبت: 0 / ${total}`;
+
+    const container = document.getElementById('scroll-questions-container');
+    container.innerHTML = '';
+
+    // Render questions in smooth non-blocking chunks
+    renderScrollChunk(0, 30);
 
     switchScreen('scroll-quiz-screen');
     window.scrollTo({ top: 0, behavior: 'smooth' });
