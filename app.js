@@ -724,6 +724,137 @@ async function loadQuizzes(isSilent = false) {
     }
 }
 
+let currentQuizSubtab = 'individual'; // 'individual' or 'mega'
+
+function renderMegaBundlesList() {
+    const container = document.getElementById('models-list-container');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const data = quizzesData;
+    const keys = Object.keys(data).sort((a, b) => {
+        const aNum = parseInt(a.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+        const bNum = parseInt(b.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+        return aNum - bNum;
+    });
+
+    const bundleSize = 32;
+    const totalBundles = Math.ceil(keys.length / bundleSize);
+
+    for (let i = 0; i < totalBundles; i++) {
+        const startIdx = i * bundleSize;
+        const count = Math.min(bundleSize, keys.length - startIdx);
+        const startNum = startIdx + 1;
+        const endNum = startIdx + count;
+
+        const megaKey = `MEGA_RANGE_${startIdx}_${count}`;
+        const title = `🚀 التجميعية الكبرى ${i + 1} (النماذج ${startNum} - ${endNum})`;
+
+        let totalQ = 0;
+        const targetKeys = keys.slice(startIdx, startIdx + count);
+        targetKeys.forEach(k => {
+            if (data[k] && data[k].questions) {
+                totalQ += data[k].questions.filter(q => (q.type === 2 || q.type === 4) && !isPledgeQuestion(q)).length;
+            }
+        });
+
+        const completedData = userProgress.completed && userProgress.completed[megaKey];
+        const isSolved = completedData !== undefined;
+        let score = 0;
+        if (isSolved && typeof completedData === 'object') {
+            score = completedData.score || 0;
+        }
+
+        const solvedBadge = isSolved ? 
+            `<span class="model-badge" style="background: rgba(16,185,129,0.15); color: var(--success-color);">حل سابق: ${score}%</span>` : 
+            `<span class="model-badge" style="background: rgba(139,92,246,0.15); color: var(--accent-color);">32 نموذج مجمع 🎯</span>`;
+
+        const card = document.createElement('div');
+        card.className = 'model-card';
+        card.style.cssText = "background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)); border: 1px solid rgba(139, 92, 246, 0.35); box-shadow: 0 8px 24px rgba(139, 92, 246, 0.15); border-radius: 16px;";
+
+        card.innerHTML = `
+            <div class="model-card-header">
+                <span class="model-number" style="background: var(--accent-gradient); color: white; padding: 4px 10px; border-radius: 8px; font-weight: 800;">تجميعية ${i + 1}</span>
+                ${solvedBadge}
+            </div>
+            <h3 class="model-card-title" style="font-size: 17px; margin: 10px 0; color: var(--text-primary); font-weight: 800;">${title}</h3>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.6;">
+                <i class="fa-solid fa-circle-check" style="color: #10b981; margin-left: 4px;"></i> تتضمن <strong>${count} نموذجاً كاملاً</strong> تجمع <strong>${totalQ} سؤالاً مجمعاً</strong> مع كافة نصوص الاستيعاب والقراءة دون أي نقص!
+            </p>
+            <div style="display: flex; gap: 8px; margin-top: auto;">
+                <button class="btn-primary" onclick="openModeModal('${megaKey}')" style="width: 100%; justify-content: center; padding: 12px; font-weight: 800; font-size: 14px; gap: 8px; border-radius: 12px;">
+                    <i class="fa-solid fa-play"></i> ابدأ الاختبار المجمع
+                </button>
+            </div>
+        `;
+        container.appendChild(card);
+    }
+}
+
+// Helper to load questions and reading passages for a single model OR a 32-model Mega Range
+function loadActiveQuestionsForSelection(selectionKey) {
+    activeQuestionsList = [];
+    passageMappings = [];
+
+    if (!quizzesData) return false;
+
+    if (selectionKey.startsWith('MEGA_RANGE_')) {
+        const parts = selectionKey.replace('MEGA_RANGE_', '').split('_');
+        const startIdx = parseInt(parts[0]) || 0;
+        const count = parseInt(parts[1]) || 32;
+
+        const keys = Object.keys(quizzesData).sort((a, b) => {
+            const aNum = parseInt(a.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+            const bNum = parseInt(b.split(':')[0].replace(/[^0-9]/g, '')) || 0;
+            return aNum - bNum;
+        });
+
+        const targetKeys = keys.slice(startIdx, startIdx + count);
+
+        targetKeys.forEach(key => {
+            const model = quizzesData[key];
+            if (!model) return;
+            const rawQuestions = model.questions;
+            let currentPassage = null;
+
+            for (let i = 0; i < rawQuestions.length; i++) {
+                const q = rawQuestions[i];
+                if (q.type === 0 && q.choices.length === 0) {
+                    if (isValidPassageText(q.title)) {
+                        currentPassage = q.title;
+                    }
+                } else if ((q.type === 2 || q.type === 4) && !isPledgeQuestion(q)) {
+                    activeQuestionsList.push({
+                        ...q,
+                        modelKey: key
+                    });
+                    passageMappings.push(currentPassage);
+                }
+            }
+        });
+    } else {
+        const model = quizzesData[selectionKey];
+        if (!model) return false;
+        const rawQuestions = model.questions;
+        let currentPassage = null;
+
+        for (let i = 0; i < rawQuestions.length; i++) {
+            const q = rawQuestions[i];
+            if (q.type === 0 && q.choices.length === 0) {
+                if (isValidPassageText(q.title)) {
+                    currentPassage = q.title;
+                }
+            } else if ((q.type === 2 || q.type === 4) && !isPledgeQuestion(q)) {
+                activeQuestionsList.push(q);
+                passageMappings.push(currentPassage);
+            }
+        }
+    }
+
+    return activeQuestionsList.length > 0;
+}
+
 // Render list of quizzes
 function renderModelsList(data, filterText = '') {
     const container = document.getElementById('models-list-container');
@@ -1268,6 +1399,37 @@ function setupEventHandlers() {
         });
     }
 
+    // Quiz Category Subtabs (Individual vs Mega Combined)
+    const subtabIndividual = document.getElementById('subtab-individual');
+    const subtabMega = document.getElementById('subtab-mega');
+    const searchSection = document.getElementById('quizzes-search-section');
+
+    if (subtabIndividual && subtabMega) {
+        subtabIndividual.addEventListener('click', () => {
+            currentQuizSubtab = 'individual';
+            subtabIndividual.className = 'btn-primary';
+            subtabIndividual.style.background = '';
+            subtabIndividual.style.color = '';
+            subtabMega.className = 'btn-secondary';
+            subtabMega.style.background = 'var(--bg-tertiary)';
+            subtabMega.style.color = 'var(--text-secondary)';
+            if (searchSection) searchSection.style.display = 'block';
+            renderModelsList(quizzesData);
+        });
+
+        subtabMega.addEventListener('click', () => {
+            currentQuizSubtab = 'mega';
+            subtabMega.className = 'btn-primary';
+            subtabMega.style.background = 'var(--accent-gradient)';
+            subtabMega.style.color = 'white';
+            subtabIndividual.className = 'btn-secondary';
+            subtabIndividual.style.background = 'var(--bg-tertiary)';
+            subtabIndividual.style.color = 'var(--text-secondary)';
+            if (searchSection) searchSection.style.display = 'none';
+            renderMegaBundlesList();
+        });
+    }
+
     // Tab Toggling
     const tabLogin = document.getElementById('auth-tab-login');
     const tabRegister = document.getElementById('auth-tab-register');
@@ -1628,32 +1790,8 @@ function openModeModal(modelKey) {
 
 // Quiz processing and execution
 function startQuiz() {
-    const model = quizzesData[selectedModelName];
-    if (!model) return;
-    
-    // Parse questions: extract only graded MCQ questions
-    const rawQuestions = model.questions;
-    activeQuestionsList = [];
-    passageMappings = [];
-    
-    let currentPassage = null;
-    
-    for (let i = 0; i < rawQuestions.length; i++) {
-        const q = rawQuestions[i];
-        if (q.type === 0) {
-            // This is a paragraph/passage text
-            if (isValidPassageText(q.title)) {
-                currentPassage = q.title;
-            }
-        } else if ((q.type === 2 || q.type === 4) && !isPledgeQuestion(q)) {
-            // Graded question
-            activeQuestionsList.push(q);
-            // Map the current passage to this question index
-            passageMappings.push(currentPassage);
-        }
-    }
-    
-    if (activeQuestionsList.length === 0) {
+    const success = loadActiveQuestionsForSelection(selectedModelName);
+    if (!success || activeQuestionsList.length === 0) {
         alert("هذا النموذج لا يحتوي على أسئلة اختيار من متعدد متوافقة حالياً.");
         return;
     }
@@ -1661,12 +1799,21 @@ function startQuiz() {
     // Reset state
     currentQuestionIndex = 0;
     userAnswers = {};
+
+    let displayTitle = selectedModelName;
+    if (selectedModelName.startsWith('MEGA_RANGE_')) {
+        const parts = selectedModelName.replace('MEGA_RANGE_', '').split('_');
+        const startNum = parseInt(parts[0]) + 1;
+        const endNum = parseInt(parts[0]) + parseInt(parts[1]);
+        displayTitle = `🚀 التجميعية الكبرى (النماذج ${startNum} - ${endNum})`;
+    } else if (quizzesData[selectedModelName]) {
+        displayTitle = quizzesData[selectedModelName].title || selectedModelName;
+    }
     
     // Timer setting (Exam Mode)
     if (selectedMode === 'exam') {
         document.getElementById('quiz-timer-container').style.display = 'flex';
-        // 2 minutes per question
-        timerSeconds = activeQuestionsList.length * 120; 
+        timerSeconds = activeQuestionsList.length * 90; 
         updateTimerDisplay();
         clearInterval(timerInterval);
         timerInterval = setInterval(() => {
@@ -1683,7 +1830,7 @@ function startQuiz() {
         clearInterval(timerInterval);
     }
     
-    document.getElementById('quiz-title').innerText = model.title || selectedModelName;
+    document.getElementById('quiz-title').innerText = displayTitle;
     
     switchScreen('quiz-screen');
     renderQuestion();
@@ -2130,28 +2277,8 @@ window.removeMistake = removeMistake;
 let scrollAnswers = {}; // { qIndex: choiceText }
 
 function startScrollQuiz() {
-    const model = quizzesData[selectedModelName];
-    if (!model) return;
-
-    // Build question list (same logic as startQuiz)
-    const rawQuestions = model.questions;
-    activeQuestionsList = [];
-    passageMappings = [];
-    let currentPassage = null;
-
-    for (let i = 0; i < rawQuestions.length; i++) {
-        const q = rawQuestions[i];
-        if (q.type === 0 && q.choices.length === 0) {
-            if (isValidPassageText(q.title)) {
-                currentPassage = q.title;
-            }
-        } else if ((q.type === 2 || q.type === 4) && !isPledgeQuestion(q)) {
-            activeQuestionsList.push(q);
-            passageMappings.push(currentPassage);
-        }
-    }
-
-    if (activeQuestionsList.length === 0) {
+    const success = loadActiveQuestionsForSelection(selectedModelName);
+    if (!success || activeQuestionsList.length === 0) {
         alert('هذا النموذج لا يحتوي على أسئلة.');
         return;
     }
@@ -2159,8 +2286,18 @@ function startScrollQuiz() {
     scrollAnswers = {};
     const total = activeQuestionsList.length;
 
+    let displayTitle = selectedModelName;
+    if (selectedModelName.startsWith('MEGA_RANGE_')) {
+        const parts = selectedModelName.replace('MEGA_RANGE_', '').split('_');
+        const startNum = parseInt(parts[0]) + 1;
+        const endNum = parseInt(parts[0]) + parseInt(parts[1]);
+        displayTitle = `🚀 التجميعية الكبرى (النماذج ${startNum} - ${endNum})`;
+    } else if (quizzesData[selectedModelName]) {
+        displayTitle = quizzesData[selectedModelName].title || selectedModelName;
+    }
+
     // Set header info
-    document.getElementById('scroll-quiz-title').innerText = model.title || selectedModelName;
+    document.getElementById('scroll-quiz-title').innerText = displayTitle;
     document.getElementById('scroll-quiz-counter').innerText = `إجمالي الأسئلة: ${total}`;
     document.getElementById('scroll-answered-badge').innerText = `أجبت: 0 / ${total}`;
 

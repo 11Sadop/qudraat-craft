@@ -117,8 +117,18 @@
 
             <!-- Tab 1: Quizzes Content -->
             <div id="quizzes-tab-content" style="display: flex; flex-direction: column; gap: 24px; width: 100%;">
+                <!-- Subtab Category Selector (Individual vs Mega Combined) -->
+                <div style="display: flex; gap: 10px; width: 100%; margin-bottom: 4px;">
+                    <button id="subtab-individual" class="btn-primary" style="flex: 1; padding: 12px; font-size: 14px; border-radius: 12px; justify-content: center; gap: 8px; font-weight: 800;">
+                        <i class="fa-solid fa-cubes"></i> النماذج الفردية (225 نموذج)
+                    </button>
+                    <button id="subtab-mega" class="btn-secondary" style="flex: 1; padding: 12px; font-size: 14px; border-radius: 12px; justify-content: center; gap: 8px; font-weight: 800; border: 1px solid var(--border-color); color: var(--text-secondary);">
+                        <i class="fa-solid fa-layer-group" style="color: var(--accent-color);"></i> الاختبارات التجميعية (32 نموذج مجمع) 🚀
+                    </button>
+                </div>
+
                 <!-- Search and Filter Bar -->
-                <div class="search-filter-section">
+                <div class="search-filter-section" id="quizzes-search-section">
                     <div class="search-wrapper">
                         <i class="fa-solid fa-magnifying-glass"></i>
                         <input type="text" class="search-input" id="search-bar" placeholder="ابحث عن نموذج (مثال: الزلازل، السكري، عمر بن عبد العزيز)...">
