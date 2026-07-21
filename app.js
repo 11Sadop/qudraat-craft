@@ -1973,6 +1973,29 @@ function selectOptionStudy(choice, btnElement) {
         }
         btn.disabled = true; // Disable all
     });
+
+    // Real-time Mistakes Bank recording
+    userProgress.incorrectQuestions = userProgress.incorrectQuestions || [];
+    const targetModel = q.modelKey || selectedModelName;
+
+    if (choice !== q.correct_answer) {
+        const exists = userProgress.incorrectQuestions.some(x => x.title === q.title && (x.modelName === targetModel || x.modelName === selectedModelName));
+        if (!exists) {
+            userProgress.incorrectQuestions.push({
+                modelName: targetModel,
+                title: q.title,
+                choices: q.choices,
+                correct_answer: q.correct_answer,
+                userAnswer: choice,
+                userAns: choice
+            });
+        }
+    } else {
+        userProgress.incorrectQuestions = userProgress.incorrectQuestions.filter(x => x.title !== q.title);
+    }
+
+    saveProgress();
+    updateStatsDashboard();
 }
 
 // Option selection (Exam Mode)
@@ -2016,6 +2039,7 @@ function submitQuiz() {
 
     activeQuestionsList.forEach((q, idx) => {
         const userAns = userAnswers[idx];
+        const targetModel = q.modelKey || selectedModelName;
         if (userAns === q.correct_answer) {
             correctCount++;
             userProgress.totalCorrect++;
@@ -2023,10 +2047,10 @@ function submitQuiz() {
         } else {
             incorrectCount++;
             userProgress.totalIncorrect++;
-            const exists = userProgress.incorrectQuestions.some(x => x.title === q.title && x.modelName === selectedModelName);
+            const exists = userProgress.incorrectQuestions.some(x => x.title === q.title && (x.modelName === targetModel || x.modelName === selectedModelName));
             if (!exists) {
                 userProgress.incorrectQuestions.push({
-                    modelName: selectedModelName,
+                    modelName: targetModel,
                     title: q.title,
                     choices: q.choices,
                     correct_answer: q.correct_answer,
@@ -2361,6 +2385,29 @@ function renderScrollChunk(startIdx, batchSize = 40) {
                 scrollAnswers[qIdx] = choice;
                 const answeredCount = Object.keys(scrollAnswers).length;
                 document.getElementById('scroll-answered-badge').innerText = `أجبت: ${answeredCount} / ${activeQuestionsList.length}`;
+
+                // Real-time Mistakes Bank recording for Scroll Mode
+                userProgress.incorrectQuestions = userProgress.incorrectQuestions || [];
+                const targetModel = q.modelKey || selectedModelName;
+
+                if (choice !== q.correct_answer) {
+                    const exists = userProgress.incorrectQuestions.some(x => x.title === q.title && (x.modelName === targetModel || x.modelName === selectedModelName));
+                    if (!exists) {
+                        userProgress.incorrectQuestions.push({
+                            modelName: targetModel,
+                            title: q.title,
+                            choices: q.choices,
+                            correct_answer: q.correct_answer,
+                            userAnswer: choice,
+                            userAns: choice
+                        });
+                    }
+                } else {
+                    userProgress.incorrectQuestions = userProgress.incorrectQuestions.filter(x => x.title !== q.title);
+                }
+
+                saveProgress();
+                updateStatsDashboard();
             });
             optionsGrid.appendChild(btn);
         });
