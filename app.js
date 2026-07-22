@@ -702,6 +702,35 @@ async function loadQuizzes(isSilent = false) {
         const response = await fetch('solved_quizzes.json?v=' + Date.now());
         quizzesData = await response.json();
         
+        // Clean up obsolete/legacy completed quizzes and incorrect questions
+        let needsSave = false;
+        if (userProgress) {
+            if (userProgress.completed) {
+                const keys = Object.keys(userProgress.completed);
+                keys.forEach(k => {
+                    if (k !== 'MEGA_RANGE_0_225' && !k.startsWith('MEGA_RANGE_') && !quizzesData[k]) {
+                        delete userProgress.completed[k];
+                        needsSave = true;
+                    }
+                });
+            }
+            if (userProgress.incorrectQuestions) {
+                const originalLength = userProgress.incorrectQuestions.length;
+                userProgress.incorrectQuestions = userProgress.incorrectQuestions.filter(mq => {
+                    const model = quizzesData[mq.modelName];
+                    if (!model) return false;
+                    return model.questions.some(q => q.title === mq.title);
+                });
+                if (userProgress.incorrectQuestions.length !== originalLength) {
+                    needsSave = true;
+                }
+            }
+            if (needsSave) {
+                saveProgress();
+                updateStatsDashboard();
+            }
+        }
+        
         // Update stats
         const totalModels = Object.keys(quizzesData).length;
         const totalModelsEl = document.getElementById('stat-total-models');
